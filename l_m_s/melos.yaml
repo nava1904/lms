@@ -1,0 +1,14 @@
+name: l_m_s_workspace
+description: A Vyuh Flutter project created by Vyuh CLI.
+
+
+packages:
+  - plugins/*
+  - features/*
+  - features/*/*
+  - packages/*
+  - apps/*
+
+command:
+  version:
+    workspaceChangelog: false
