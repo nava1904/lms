@@ -17,6 +17,12 @@ jobs:
           flutter-version: '3.41'
           channel: 'stable'
           cache: true
+      - name: Create .env for build
+        run: |
+          cd l_m_s/apps/l_m_s
+          echo "SANITY_PROJECT_ID=${SANITY_PROJECT_ID:-w18438cu}" > .env
+          echo "SANITY_DATASET=${SANITY_DATASET:-production}" >> .env
+          echo "SANITY_API_TOKEN=${SANITY_API_TOKEN:-}" >> .env
 
       - name: Install dependencies
         run: cd l_m_s/apps/l_m_s && flutter pub get
