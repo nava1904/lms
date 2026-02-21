@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vyuh_core/vyuh_core.dart';
 
+import 'core/current_admin_holder.dart';
 import 'core/current_student_holder.dart';
+import 'core/current_teacher_holder.dart';
 import 'theme/theme_mode_holder.dart';
 import 'screens/admin_dashboard_screen.dart';
 import 'screens/admin_login_screen.dart';
@@ -15,7 +17,6 @@ import 'screens/login_screen.dart';
 import 'screens/premium_home_dashboard.dart';
 import 'screens/student_analytics_screen.dart';
 import 'screens/teacher_dashboard_screen.dart';
-import 'screens/teacher_placeholder_screen.dart';
 import 'screens/teacher_question_add_screen.dart';
 import 'screens/teacher_question_bank_screen.dart';
 import 'screens/teacher_paper_builder_screen.dart';
@@ -62,9 +63,12 @@ final feature = FeatureDescriptor(
           }
           return null;
         },
-        pageBuilder: (context, state) => const NoTransitionPage(
-          child: LoginScreen(),
-        ),
+        pageBuilder: (context, state) {
+          final role = state.uri.queryParameters['role'];
+          return NoTransitionPage(
+            child: LoginScreen(initialRole: role),
+          );
+        },
       ),
       GoRoute(
         path: '/admin-login',
@@ -132,14 +136,19 @@ final feature = FeatureDescriptor(
             path: '/teacher-dashboard',
             redirect: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
-              final teacherId = extra?['teacherId'] as String? ?? '';
+              var teacherId = extra?['teacherId'] as String? ?? '';
+              if (teacherId.isEmpty) teacherId = CurrentTeacherHolder.teacherId ?? '';
               if (teacherId.isEmpty) return '/login';
               return null;
             },
             pageBuilder: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
-              final teacherName = extra?['teacherName'] as String? ?? 'Teacher';
-              final teacherId = extra?['teacherId'] as String? ?? '';
+              var teacherName = extra?['teacherName'] as String? ?? 'Teacher';
+              var teacherId = extra?['teacherId'] as String? ?? '';
+              if (teacherId.isEmpty) {
+                teacherId = CurrentTeacherHolder.teacherId ?? '';
+                teacherName = CurrentTeacherHolder.teacherName ?? 'Teacher';
+              }
               return NoTransitionPage(
                 child: TeacherDashboardScreen(teacherName: teacherName, teacherId: teacherId),
               );
@@ -178,6 +187,12 @@ final feature = FeatureDescriptor(
             path: '/teacher/worksheets',
             pageBuilder: (_, __) => const NoTransitionPage(
               child: TeacherWorksheetsScreen(),
+            ),
+          ),
+          GoRoute(
+            path: '/teacher/attendance',
+            pageBuilder: (_, __) => const NoTransitionPage(
+              child: AttendanceScreen(),
             ),
           ),
           GoRoute(
@@ -236,21 +251,30 @@ final feature = FeatureDescriptor(
             path: '/admin-dashboard',
             pageBuilder: (context, state) {
               final extra = state.extra as Map<String, dynamic>?;
-              final adminId = extra?['adminId'] as String? ?? '';
-              final adminName = extra?['adminName'] as String? ?? 'Admin';
-              final adminEmail = extra?['adminEmail'] as String? ?? '';
-              final adminRole = extra?['adminRole'] as String? ?? '';
+              var adminId = extra?['adminId'] as String? ?? '';
+              var adminName = extra?['adminName'] as String? ?? 'Admin';
+              var adminEmail = extra?['adminEmail'] as String? ?? '';
+              var adminRole = extra?['adminRole'] as String? ?? '';
+              if (adminId.isEmpty) {
+                adminId = CurrentAdminHolder.adminId ?? '';
+                adminName = CurrentAdminHolder.adminName ?? 'Admin';
+                adminEmail = CurrentAdminHolder.adminEmail ?? '';
+                adminRole = CurrentAdminHolder.adminRole ?? 'admin';
+              }
               if (adminId.isEmpty) {
                 return NoTransitionPage(
                   child: _RedirectToLogin(loginPath: '/admin-login'),
                 );
               }
+              final tabParam = state.uri.queryParameters['tab'];
+              final initialTab = tabParam != null ? int.tryParse(tabParam) : null;
               return NoTransitionPage(
                 child: AdminDashboardScreen(
                   adminId: adminId,
                   adminName: adminName,
                   adminEmail: adminEmail,
-                  adminRole: adminRole,
+                  adminRole: adminRole ?? 'admin',
+                  initialTabIndex: initialTab,
                 ),
               );
             },

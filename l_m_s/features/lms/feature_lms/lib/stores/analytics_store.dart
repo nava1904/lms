@@ -84,7 +84,7 @@ abstract class _AnalyticsStore with Store {
     });
   }
 
-  /// Topics with accuracy < 60% (subject/chapter or questionType fallback).
+  /// Topics with accuracy < 50% (subject/chapter or questionType fallback).
   @computed
   List<Map<String, dynamic>> get weakTopics {
     final byTopic = <String, List<bool>>{};
@@ -100,7 +100,7 @@ abstract class _AnalyticsStore with Store {
       if (results.isEmpty) return;
       final correctCount = results.where((b) => b).length;
       final pct = (correctCount / results.length) * 100;
-      if (pct < 60) {
+      if (pct < 50) {
         weak.add({
           'topic': key,
           'accuracyPercent': pct,

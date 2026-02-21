@@ -11,6 +11,7 @@ class ProfessionalCourseCard extends StatelessWidget {
   final List<String> features;
   final double progress;
   final VoidCallback onTap;
+  final Color? accentColor;
 
   const ProfessionalCourseCard({
     super.key,
@@ -22,11 +23,13 @@ class ProfessionalCourseCard extends StatelessWidget {
     required this.features,
     required this.progress,
     required this.onTap,
+    this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accent = accentColor ?? Colors.blue;
     return GestureDetector(
       onTap: onTap,
       child: Card(
@@ -68,7 +71,7 @@ class ProfessionalCourseCard extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.9),
+                        color: accent.withOpacity(0.9),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
@@ -80,12 +83,12 @@ class ProfessionalCourseCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Rating Badge (with tooltip when 0: "based on student reviews when available")
+                  // Rating Badge (tooltip explains source)
                   Positioned(
                     top: 8,
                     right: 8,
                     child: Tooltip(
-                      message: rating > 0 ? 'Course rating' : 'Rating: based on student reviews (when available)',
+                      message: 'Rating: based on student reviews (when available). Currently placeholder until reviews are implemented.',
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -152,7 +155,7 @@ class ProfessionalCourseCard extends StatelessWidget {
                             '${(progress * 100).toStringAsFixed(0)}%',
                             style: theme.textTheme.labelSmall?.copyWith(
                               fontWeight: FontWeight.w600,
-                              color: Colors.blue,
+                              color: accent,
                             ),
                           ),
                         ],
@@ -164,7 +167,7 @@ class ProfessionalCourseCard extends StatelessWidget {
                           value: progress,
                           minHeight: 6,
                           backgroundColor: Colors.grey[200],
-                          valueColor: const AlwaysStoppedAnimation<Color>(Colors.blue),
+                          valueColor: AlwaysStoppedAnimation<Color>(accent),
                         ),
                       ),
                     ],

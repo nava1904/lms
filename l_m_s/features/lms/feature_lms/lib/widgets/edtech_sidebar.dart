@@ -4,6 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import '../theme/lms_theme.dart';
 import '../theme/theme_mode_holder.dart';
 import '../core/current_student_holder.dart';
+import '../core/current_admin_holder.dart';
+import '../core/current_teacher_holder.dart';
+import '../core/session_clearer.dart';
 
 /// Professional EdTech LMS v2 sidebar: fixed 256px, logo, nav, user profile.
 /// Student/Teacher: white bg. Admin: dark slate.
@@ -76,12 +79,12 @@ class EdTechSidebar extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
               children: navItems.map((e) => _NavTile(
-                isActive: _isActive(context, e.path),
+                isActive: _isActive(context, e.path, e.adminTab),
                 icon: e.icon,
                 label: e.label,
                 isAdmin: isAdmin,
                 accentColor: e.accentColor,
-                onTap: () => _goTo(context, e.path),
+                onTap: () => _goTo(context, e.path, e.adminTab),
               )).toList(),
             ),
           ),
@@ -125,6 +128,7 @@ class EdTechSidebar extends StatelessWidget {
           _NavItem(Icons.description_outlined, 'Paper Builder', '/teacher/paper-builder'),
           _NavItem(Icons.assignment_outlined, 'Worksheets', '/teacher/worksheets'),
           _NavItem(Icons.people_outline, 'Students', '/teacher/students'),
+          _NavItem(Icons.check_circle_outline, 'Attendance', '/teacher/attendance'),
           _NavItem(Icons.analytics_outlined, 'Analytics', '/teacher/analytics'),
           _NavItem(Icons.video_library_outlined, 'Content Studio', '/teacher/content-studio'),
           _NavItem(Icons.settings_outlined, 'Settings', '/teacher/settings'),
@@ -132,36 +136,46 @@ class EdTechSidebar extends StatelessWidget {
         ];
       case SidebarRole.admin:
         return [
-          _NavItem(Icons.dashboard_outlined, 'Dashboard', '/admin-dashboard'),
-          _NavItem(Icons.school_outlined, 'Teachers', '/admin-dashboard'),
-          _NavItem(Icons.people_outline, 'Students', '/admin-dashboard'),
-          _NavItem(Icons.folder_outlined, 'Documents', '/admin-dashboard'),
-          _NavItem(Icons.check_circle_outline, 'Attendance', '/attendance'),
-          _NavItem(Icons.calendar_today_outlined, 'Test Schedule', '/admin-dashboard'),
-          _NavItem(Icons.settings_outlined, 'Settings', '/admin-dashboard'),
+          _NavItem(Icons.dashboard_outlined, 'Dashboard', '/admin-dashboard', null, 0),
+          _NavItem(Icons.school_outlined, 'Teachers', '/admin-dashboard', null, 1),
+          _NavItem(Icons.people_outline, 'Students', '/admin-dashboard', null, 2),
+          _NavItem(Icons.campaign_outlined, 'Banners', '/admin-dashboard', null, 3),
+          _NavItem(Icons.folder_outlined, 'Documents', '/admin-dashboard', null, 4),
+          _NavItem(Icons.check_circle_outline, 'Attendance', '/teacher/attendance'),
           _NavItem(Icons.logout, 'Logout', '/logout'),
         ];
     }
   }
 
-  bool _isActive(BuildContext context, String path) {
+  bool _isActive(BuildContext context, String path, int? adminTab) {
     if (path == '/logout') return false;
-    final loc = GoRouterState.of(context).uri.path;
+    final uri = GoRouterState.of(context).uri;
+    final loc = uri.path;
+    // Admin: only highlight the item whose tab matches current tab
+    if (path == '/admin-dashboard' && adminTab != null) {
+      if (loc != '/admin-dashboard' && !loc.contains('admin-dashboard')) return false;
+      final currentTab = int.tryParse(uri.queryParameters['tab'] ?? '') ?? 0;
+      return currentTab == adminTab;
+    }
+    // Admin Attendance: when on /teacher/attendance
+    if (path == '/teacher/attendance' && (loc == '/teacher/attendance' || loc.startsWith('/teacher/attendance/'))) return true;
+    // Student: Dashboard (exclude My Courses)
     if (path.contains('student-dashboard') && loc.contains('student-dashboard') && !loc.contains('student-courses')) return true;
-    if (path == '/student-courses' && loc == '/student-courses') return true;
-    if (path == '/student-settings' && loc == '/student-settings') return true;
-    if (path == '/analytics' && loc == '/analytics') return true;
+    // Student: My Courses (exact or prefix)
+    if (path == '/student-courses' && (loc == '/student-courses' || loc.startsWith('/student-courses/'))) return true;
+    if (path == '/student-settings' && (loc == '/student-settings' || loc.startsWith('/student-settings/'))) return true;
+    if (path == '/analytics' && (loc == '/analytics' || loc.startsWith('/analytics/'))) return true;
     if (path == '/tests' && loc.startsWith('/tests')) return true;
-    if (path == '/teacher-dashboard' && loc == '/teacher-dashboard') return true;
-    if (path.startsWith('/teacher/') && loc.startsWith(path)) return true;
-    if (path == '/admin-dashboard' && loc.contains('admin')) return true;
-    if (path == '/attendance' && loc == '/attendance') return true;
+    // Teacher
+    if (path == '/teacher-dashboard' && (loc == '/teacher-dashboard' || loc.startsWith('/teacher-dashboard/'))) return true;
+    if (path.startsWith('/teacher/') && (loc == path || loc.startsWith('$path/'))) return true;
+    if (path == '/attendance' && (loc == '/attendance' || loc.startsWith('/attendance/'))) return true;
     return loc == path || loc.startsWith('$path/');
   }
 
-  void _goTo(BuildContext context, String path) {
+  void _goTo(BuildContext context, String path, [int? adminTab]) {
     if (path == '/logout') {
-      CurrentStudentHolder.clear();
+      clearAllSessionData();
       context.go('/');
       return;
     }
@@ -217,6 +231,36 @@ class EdTechSidebar extends StatelessWidget {
       context.go('/');
       return;
     }
+    // Admin dashboard: pass extra and tab query to avoid redirect loop
+    if (path == '/admin-dashboard') {
+      final id = CurrentAdminHolder.adminId ?? '';
+      if (id.isNotEmpty) {
+        final tabQuery = adminTab != null ? '?tab=$adminTab' : '';
+        context.go('/admin-dashboard$tabQuery', extra: {
+          'adminId': id,
+          'adminName': CurrentAdminHolder.adminName ?? 'Admin',
+          'adminEmail': CurrentAdminHolder.adminEmail ?? '',
+          'adminRole': CurrentAdminHolder.adminRole ?? 'admin',
+        });
+        return;
+      }
+    }
+    // Teacher dashboard and settings: pass extra from CurrentTeacherHolder
+    if (path == '/teacher-dashboard' || path == '/teacher/settings') {
+      final id = CurrentTeacherHolder.teacherId ?? '';
+      if (id.isNotEmpty) {
+        context.go(path, extra: {
+          'teacherId': id,
+          'teacherName': CurrentTeacherHolder.teacherName ?? 'Teacher',
+        });
+        return;
+      }
+    }
+    // Attendance routes: teacher/attendance and /attendance don't require studentId
+    if (path == '/teacher/attendance' || path == '/attendance') {
+      context.go(path);
+      return;
+    }
     context.go(path);
   }
 }
@@ -270,7 +314,8 @@ class _NavItem {
   final String label;
   final String path;
   final Color? accentColor;
-  _NavItem(this.icon, this.label, this.path, [this.accentColor]);
+  final int? adminTab;
+  _NavItem(this.icon, this.label, this.path, [this.accentColor, this.adminTab]);
 }
 
 class _NavTile extends StatelessWidget {

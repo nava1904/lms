@@ -46,7 +46,8 @@ class LmsQueries {
       _id, title, slug, description, order,
       "course": course->{ _id, title },
       "chapters": chapters[]->{ _id, title, slug, order },
-      "chapterCount": count(chapters)
+      "chapterCount": count(*[_type == "chapter" && subject._ref == ^._id]),
+      "lessonCount": count(*[_type == "concept" && chapter->subject._ref == ^._id])
     }
   ''';
   
@@ -62,7 +63,7 @@ class LmsQueries {
       _id, title, slug, description, order,
       "subject": subject->{ _id, title },
       "concepts": concepts[]->{ _id, title, slug },
-      "conceptCount": count(concepts)
+      "conceptCount": count(*[_type == "concept" && chapter._ref == ^._id])
     }
   ''';
   
@@ -467,8 +468,8 @@ class SanityService {
     if (courseId != null) {
       doc['course'] = {'_type': 'reference', '_ref': courseId};
     }
-    
-    return await _mutate([{'create': doc}]);
+    // Use createOrReplace to write directly to published (visible immediately)
+    return await _mutate([{'createOrReplace': doc}]);
   }
 
   // ═══════════════════════════════════════════════════════════════════
@@ -817,7 +818,7 @@ class SanityService {
     if (testId != null) {
       return await _fetchList(LmsQueries.testAttemptsByTest, params: {'testId': testId});
     }
-    return await _fetchList('*[_type == "testAttempt"] | order(submittedAt desc) { _id, score, percentage, passed, "test": test->{ title }, "student": student->{ name } }');
+    return await _fetchList('*[_type == "testAttempt"] | order(submittedAt desc) { _id, score, percentage, passed, submittedAt, "test": test->{ _id, title, totalMarks }, "student": student->{ _id, name, rollNumber } }');
   }
 
   Future<Map<String, dynamic>?> submitTestAttempt({
@@ -926,7 +927,7 @@ class SanityService {
     if (date != null) {
       return await _fetchList(LmsQueries.attendanceByDate, params: {'date': date});
     }
-    return await _fetchList('*[_type == "attendance"] | order(date desc) { _id, date, status, "student": student->{ name } }');
+    return await _fetchList('*[_type == "attendance"] | order(date desc) [0...2000] { _id, date, status, "student": student->{ _id, name } }');
   }
 
   Future<Map<String, dynamic>?> markAttendance({

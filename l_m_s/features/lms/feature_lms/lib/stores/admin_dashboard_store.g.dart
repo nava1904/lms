@@ -98,6 +98,20 @@ mixin _$AdminDashboardStore on _AdminDashboardStore, Store {
         .run(() => super.loadDashboardStats());
   }
 
+  late final _$_AdminDashboardStoreActionController =
+      ActionController(name: '_AdminDashboardStore', context: context);
+
+  @override
+  void clear() {
+    final _$actionInfo = _$_AdminDashboardStoreActionController.startAction(
+        name: '_AdminDashboardStore.clear');
+    try {
+      return super.clear();
+    } finally {
+      _$_AdminDashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
   @override
   String toString() {
     return '''

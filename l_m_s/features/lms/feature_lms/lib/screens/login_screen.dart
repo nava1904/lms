@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../core/current_student_holder.dart';
+import '../core/current_teacher_holder.dart';
 import '../sanity_client_helper.dart';
 import '../models/models.dart';
 import '../services/lms_sanity_service.dart';
 import '../theme/lms_theme.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  final String? initialRole;
+
+  const LoginScreen({super.key, this.initialRole});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -18,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _studentPasswordController = TextEditingController();
   final _rollNumberController = TextEditingController();
   String _selectedRole = 'student';
   bool _isLoading = false;
@@ -29,6 +33,12 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     CurrentStudentHolder.clear();
+    if (widget.initialRole != null) {
+      final r = widget.initialRole!.toLowerCase();
+      if (r == 'teacher' || r == 'admin') {
+        _selectedRole = r;
+      }
+    }
     _loadBanner();
   }
 
@@ -41,6 +51,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _studentPasswordController.dispose();
     _rollNumberController.dispose();
     super.dispose();
   }
@@ -102,19 +113,27 @@ class _LoginScreenState extends State<LoginScreen> {
   void _navigateToDashboard(Map<String, dynamic> user) {
     switch (_selectedRole) {
       case 'student': {
+        CurrentStudentHolder.clear();
         final id = user['_id'] as String? ?? '';
+        final name = user['name'] as String? ?? 'Student';
+        final roll = user['rollNumber'] as String? ?? '';
+        CurrentStudentHolder.set(id, name: name, roll: roll);
         context.go('/student-dashboard/$id', extra: {
-          'studentName': user['name'] ?? 'Student',
-          'rollNumber': user['rollNumber'] ?? '',
+          'studentName': name,
+          'rollNumber': roll,
         });
         break;
       }
-      case 'teacher':
+      case 'teacher': {
+        final teacherId = user['_id'] as String? ?? '';
+        final teacherName = user['name'] as String? ?? 'Teacher';
+        CurrentTeacherHolder.set(teacherId, name: teacherName);
         context.go('/teacher-dashboard', extra: {
-          'teacherName': user['name'] ?? 'Teacher',
-          'teacherId': user['_id'] ?? '',
+          'teacherName': teacherName,
+          'teacherId': teacherId,
         });
         break;
+      }
       case 'admin':
         context.go('/admin-dashboard', extra: {
           'adminName': user['name'] ?? 'Admin',
@@ -315,9 +334,9 @@ class _LoginScreenState extends State<LoginScreen> {
               TextFormField(
                 controller: _rollNumberController,
                 decoration: InputDecoration(
-                  labelText: 'Roll Number',
+                  labelText: 'Roll Number / Username',
                   hintText: 'Enter your roll number (e.g. ROLL011)',
-                  helperText: 'Students sign in with roll number only; no password required.',
+                  helperText: 'Trim spaces before signing in.',
                   prefixIcon: const Icon(Icons.badge_outlined, size: 20),
                   filled: true,
                   fillColor: Colors.white,
@@ -331,16 +350,51 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
-                validator: (value) =>
-                    (value?.trim() ?? '').isEmpty ? 'Roll Number is required' : null,
+                validator: (value) {
+                  final t = value?.trim() ?? '';
+                  if (t.isEmpty) return 'Roll Number is required';
+                  if (value != null && value != t) return 'Remove leading or trailing spaces';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _studentPasswordController,
+                obscureText: true,
+                maxLength: 128,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  hintText: 'Min 6 characters',
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                validator: (value) {
+                  if (value?.isEmpty == true) return 'Password is required';
+                  if (value!.length < 6) return 'Password must be at least 6 characters';
+                  return null;
+                },
               ),
             ],
             if (_selectedRole != 'student') ...[
               const SizedBox(height: 20),
               TextFormField(
                 controller: _passwordController,
+                maxLength: 128,
                 decoration: InputDecoration(
                   labelText: 'Password',
+                  hintText: 'Min 8 chars, upper, lower, number, special',
+                  counterText: '',
                   prefixIcon: const Icon(Icons.lock_outline, size: 20),
                   filled: true,
                   fillColor: Colors.white,
@@ -357,7 +411,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 obscureText: true,
                 validator: (value) {
                   if (value?.isEmpty == true) return 'Password is required';
-                  if (value!.length < 6) return 'Password must be at least 6 characters';
+                  if (value!.length < 8) return 'Password must be at least 8 characters';
+                  if (value.length > 128) return 'Password must be at most 128 characters';
+                  if (!value.contains(RegExp(r'[A-Z]'))) return 'Include at least one uppercase letter';
+                  if (!value.contains(RegExp(r'[a-z]'))) return 'Include at least one lowercase letter';
+                  if (!value.contains(RegExp(r'[0-9]'))) return 'Include at least one number';
+                  const specialChars = '!@#\$%^&*(),.?":{}|<>_-+=[]\\;\'`~';
+                  if (!value.split('').any((c) => specialChars.contains(c))) return 'Include at least one special character';
                   return null;
                 },
               ),

@@ -91,18 +91,55 @@ abstract class _TestStore with Store {
     timeSpentPerQuestion[index] = seconds;
   }
 
-  /// Check if answer matches correctAnswer. Handles both option text and option index
-  /// (test window may store index "0","1" while Sanity stores option text).
+  /// Check if answer matches correctAnswer. Compares option VALUE (text), not only index.
+  /// Handles: option text, option index, case insensitivity, true/false variants.
   bool _isAnswerCorrect(String? ans, Question q) {
     if (ans == null || ans.isEmpty) return false;
     final correct = q.correctAnswer;
     if (correct == null || correct.isEmpty) return false;
-    if (ans == correct) return true;
-    final idx = int.tryParse(ans);
-    if (idx != null && q.options.isNotEmpty && idx >= 0 && idx < q.options.length) {
-      final optionText = q.options[idx];
-      return optionText == correct;
+
+    final a = ans.trim();
+    final c = correct.trim();
+    if (a.isEmpty || c.isEmpty) return false;
+
+    // Direct string match
+    if (a == c) return true;
+    if (a.toLowerCase() == c.toLowerCase()) return true;
+
+    final selectedIdx = int.tryParse(a);
+    final correctIdx = int.tryParse(c);
+
+    // Resolve selected option value (text) when answer is an index
+    String? selectedOptionText;
+    if (selectedIdx != null && q.options.isNotEmpty && selectedIdx >= 0 && selectedIdx < q.options.length) {
+      selectedOptionText = (q.options[selectedIdx] ?? '').toString().trim();
     }
+
+    // Compare by option VALUE: selected option text vs correctAnswer
+    if (selectedOptionText != null) {
+      if (selectedOptionText == c || selectedOptionText.toLowerCase() == c.toLowerCase()) return true;
+      // correctAnswer might be index: resolve correct option text and compare
+      if (correctIdx != null && correctIdx >= 0 && correctIdx < q.options.length) {
+        final correctOptionText = (q.options[correctIdx] ?? '').toString().trim();
+        if (selectedOptionText == correctOptionText ||
+            selectedOptionText.toLowerCase() == correctOptionText.toLowerCase()) return true;
+      }
+    }
+
+    // Index-to-index match (when both stored as indices)
+    if (correctIdx != null && selectedIdx != null && selectedIdx == correctIdx) return true;
+
+    // True/False: handle 'true', 'false', '0', '1', 't', 'f' and option text
+    if ((q.questionType == 'truefalse' || q.questionType == 'true false') && q.options.length >= 2 && selectedIdx != null) {
+      final correctLower = c.toLowerCase();
+      if (selectedIdx == 0 && (correctLower == 'true' || correctLower == '0' || correctLower == 't')) return true;
+      if (selectedIdx == 1 && (correctLower == 'false' || correctLower == '1' || correctLower == 'f')) return true;
+      final opt0 = (q.options[0] ?? '').toString().trim().toLowerCase();
+      final opt1 = (q.options[1] ?? '').toString().trim().toLowerCase();
+      if (selectedIdx == 0 && opt0 == correctLower) return true;
+      if (selectedIdx == 1 && opt1 == correctLower) return true;
+    }
+
     return false;
   }
 

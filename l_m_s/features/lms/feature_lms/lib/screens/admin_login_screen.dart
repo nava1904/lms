@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/current_admin_holder.dart';
 import '../sanity_client_helper.dart';
 
 /// Admin login: validates email against Sanity admin document (isActive) before allowing access.
@@ -57,11 +58,16 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         return;
       }
       setState(() => _isLoading = false);
+      final adminId = admin['_id'] as String? ?? '';
+      final adminName = admin['name'] as String? ?? 'Admin';
+      final adminEmail = admin['email'] as String? ?? email;
+      final adminRole = admin['role'] as String? ?? 'admin';
+      CurrentAdminHolder.set(adminId, name: adminName, email: adminEmail, role: adminRole);
       context.go('/admin-dashboard', extra: {
-        'adminId': admin['_id'] ?? '',
-        'adminName': admin['name'] ?? 'Admin',
-        'adminEmail': admin['email'] ?? email,
-        'adminRole': admin['role'] ?? 'admin',
+        'adminId': adminId,
+        'adminName': adminName,
+        'adminEmail': adminEmail,
+        'adminRole': adminRole,
       });
     } catch (e) {
       if (mounted) {
@@ -100,8 +106,21 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Password'),
-                  // Admin schema has no password yet; when added, verify here
+                  maxLength: 128,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    counterText: '',
+                    hintText: 'Min 8 chars, upper, lower, number, special',
+                  ),
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Password required';
+                    if (v.length < 8) return 'Min 8 characters';
+                    if (!v.contains(RegExp(r'[A-Z]'))) return 'Include uppercase';
+                    if (!v.contains(RegExp(r'[a-z]'))) return 'Include lowercase';
+                    if (!v.contains(RegExp(r'[0-9]'))) return 'Include number';
+                    if (!v.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) return 'Include special char';
+                    return null;
+                  },
                 ),
                 if (_errorMessage != null) ...[
                   const SizedBox(height: 16),

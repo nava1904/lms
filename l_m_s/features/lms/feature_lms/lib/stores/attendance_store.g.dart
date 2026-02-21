@@ -138,6 +138,39 @@ mixin _$AttendanceStore on _AttendanceStore, Store {
   }
 
   @override
+  void clearStatus(String studentId) {
+    final _$actionInfo = _$_AttendanceStoreActionController.startAction(
+        name: '_AttendanceStore.clearStatus');
+    try {
+      return super.clearStatus(studentId);
+    } finally {
+      _$_AttendanceStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
+  void clearSession() {
+    final _$actionInfo = _$_AttendanceStoreActionController.startAction(
+        name: '_AttendanceStore.clearSession');
+    try {
+      return super.clearSession();
+    } finally {
+      _$_AttendanceStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
+  void _updateRecordStatus(String studentId, String status) {
+    final _$actionInfo = _$_AttendanceStoreActionController.startAction(
+        name: '_AttendanceStore._updateRecordStatus');
+    try {
+      return super._updateRecordStatus(studentId, status);
+    } finally {
+      _$_AttendanceStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
+  @override
   String toString() {
     return '''
 loading: ${loading},

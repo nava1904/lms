@@ -112,7 +112,7 @@ class EdTechHomePage extends StatelessWidget {
         colorStart: const Color(0xFF22C55E),
         colorEnd: const Color(0xFF059669),
         features: const ['Course Management', 'Student Analytics', 'Content Creation', 'Grade Management'],
-        path: '/login',
+        path: '/login?role=teacher',
       ),
       _RoleData(
         title: 'Admin Panel',
@@ -121,7 +121,7 @@ class EdTechHomePage extends StatelessWidget {
         colorStart: const Color(0xFFA855F7),
         colorEnd: const Color(0xFF6366F1),
         features: const ['User Management', 'Attendance Tracking', 'Test Scheduling', 'System Reports'],
-        path: '/login',
+        path: '/login?role=admin',
       ),
     ];
 

@@ -91,6 +91,20 @@ mixin _$TeacherDashboardStore on _TeacherDashboardStore, Store {
         .run(() => super.loadBatchStudents(batchId));
   }
 
+  late final _$_TeacherDashboardStoreActionController =
+      ActionController(name: '_TeacherDashboardStore', context: context);
+
+  @override
+  void clear() {
+    final _$actionInfo = _$_TeacherDashboardStoreActionController.startAction(
+        name: '_TeacherDashboardStore.clear');
+    try {
+      return super.clear();
+    } finally {
+      _$_TeacherDashboardStoreActionController.endAction(_$actionInfo);
+    }
+  }
+
   @override
   String toString() {
     return '''

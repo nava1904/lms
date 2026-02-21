@@ -27,6 +27,9 @@ class StudentAnalyticsScreen extends StatefulWidget {
 class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
   final AnalyticsStore _store = AnalyticsStore();
   TestAttempt? _selectedAttempt;
+  bool _weakAreasExpanded = false;
+  bool _topicAccuracyExpanded = false;
+  static const int _initialListCount = 5;
 
   @override
   void initState() {
@@ -129,13 +132,15 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               children: [
                 _buildSummaryCards(),
                 const SizedBox(height: 24),
+                _buildTestsAttemptedCard(),
+                const SizedBox(height: 24),
+                _buildPerQuestionBreakdownCard(),
+                const SizedBox(height: 24),
                 _buildDonutCard(),
                 const SizedBox(height: 24),
                 _buildScoreTrendCard(),
                 const SizedBox(height: 24),
                 _buildTimePerQuestionCard(),
-                const SizedBox(height: 24),
-                _buildPerQuestionBreakdownCard(),
                 const SizedBox(height: 24),
                 _buildTopicAccuracyCard(),
                 const SizedBox(height: 24),
@@ -160,7 +165,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               child: Center(
                 child: Text(
                   'No per-question data yet. Take tests to see question-by-question results.',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -179,13 +184,16 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                   final answers = attempt.answers ?? [];
                   if (answers.isEmpty) return const SizedBox.shrink();
                   final title = attempt.testTitle ?? attempt.testId;
-                  final date = attempt.submittedAt != null
-                      ? '${attempt.submittedAt!.day}/${attempt.submittedAt!.month}/${attempt.submittedAt!.year}'
+                  final dateTime = attempt.submittedAt != null
+                      ? '${attempt.submittedAt!.day}/${attempt.submittedAt!.month}/${attempt.submittedAt!.year} ${attempt.submittedAt!.hour.toString().padLeft(2, '0')}:${attempt.submittedAt!.minute.toString().padLeft(2, '0')}'
+                      : '';
+                  final timeSpent = attempt.timeSpentPerQuestion.isNotEmpty
+                      ? ' • ${_formatTimeSpent(attempt.timeSpentPerQuestion)}'
                       : '';
                   return ExpansionTile(
                     initiallyExpanded: attempts.indexOf(attempt) == 0,
                     title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    subtitle: Text(date, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    subtitle: Text('$dateTime$timeSpent', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                     children: answers.asMap().entries.map((e) {
                       final a = e.value;
                       final correct = a['isCorrect'] == true || a['correct'] == true;
@@ -198,7 +206,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                             const SizedBox(width: 8),
                             Text('Q${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
                             const SizedBox(width: 8),
-                            Text('$marks marks', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                            Text('$marks marks', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
                           ],
                         ),
                       );
@@ -224,13 +232,16 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               child: Center(
                 child: Text(
                   'No topic-wise accuracy data yet.',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
             ),
           );
         }
+        final entries = byType.entries.toList();
+        final showCount = _topicAccuracyExpanded ? entries.length : _initialListCount;
+        final remaining = entries.length - _initialListCount;
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -239,7 +250,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               children: [
                 Text('Accuracy by question type', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 16),
-                ...byType.entries.map((e) {
+                ...entries.take(showCount).map((e) {
                   final pct = (e.value * 100).toStringAsFixed(0);
                   final label = _questionTypeLabel(e.key);
                   return Padding(
@@ -250,7 +261,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                         Expanded(
                           child: LinearProgressIndicator(
                             value: e.value,
-                            backgroundColor: Colors.grey.shade200,
+                            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                             valueColor: AlwaysStoppedAnimation<Color>(LMSTheme.primaryColor),
                           ),
                         ),
@@ -260,12 +271,33 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                     ),
                   );
                 }),
+                if (remaining > 0)
+                  InkWell(
+                    onTap: () => setState(() => _topicAccuracyExpanded = !_topicAccuracyExpanded),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 4),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          _topicAccuracyExpanded ? 'Show less' : '$remaining more',
+                          style: TextStyle(color: LMSTheme.primaryColor, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  String _formatTimeSpent(Map<String, int> tpq) {
+    final total = tpq.values.fold<int>(0, (s, v) => s + v);
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '${m}m ${s}s';
   }
 
   String _questionTypeLabel(String type) {
@@ -290,13 +322,15 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               child: Center(
                 child: Text(
                   'No weak areas identified. Keep practicing!',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
             ),
           );
         }
+        final showCount = _weakAreasExpanded ? weak.length : _initialListCount;
+        final remaining = weak.length - _initialListCount;
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(20),
@@ -305,7 +339,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               children: [
                 Text('Areas to improve', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 16),
-                ...weak.map((item) {
+                ...weak.take(showCount).map((item) {
                   final topic = item['topic'] as String? ?? 'Unknown';
                   final pct = (item['accuracyPercent'] as num?)?.toStringAsFixed(0) ?? '0';
                   final attempts = item['attempts'] as int? ?? 0;
@@ -317,6 +351,88 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                         const SizedBox(width: 8),
                         Expanded(child: Text(topic, style: const TextStyle(fontSize: 13))),
                         Text('$pct% ($attempts)', style: TextStyle(color: LMSTheme.warningColor, fontSize: 12, fontWeight: FontWeight.w500)),
+                      ],
+                    ),
+                  );
+                }),
+                if (remaining > 0)
+                  InkWell(
+                    onTap: () => setState(() => _weakAreasExpanded = !_weakAreasExpanded),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 4),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          _weakAreasExpanded ? 'Show less' : '$remaining more',
+                          style: TextStyle(color: LMSTheme.primaryColor, fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTestsAttemptedCard() {
+    return Observer(
+      builder: (_) {
+        final attempts = _store.testAttempts;
+        if (attempts.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'No tests attempted yet. Take a test to see your results here.',
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+          );
+        }
+        final byTest = <String, TestAttempt>{};
+        for (final a in attempts) {
+          final key = a.testId;
+          if (!byTest.containsKey(key) || (a.submittedAt ?? a.startedAt ?? DateTime(0)).isAfter(byTest[key]!.submittedAt ?? DateTime(0))) {
+            byTest[key] = a;
+          }
+        }
+        final list = byTest.values.toList()
+          ..sort((a, b) => (b.submittedAt ?? b.startedAt ?? DateTime(0)).compareTo(a.submittedAt ?? a.startedAt ?? DateTime(0)));
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Tests attempted', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 16),
+                ...list.map((a) {
+                  final pct = a.percentage?.toStringAsFixed(0) ?? '-';
+                  final passed = a.passed == true;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Row(
+                      children: [
+                        Icon(passed ? Icons.check_circle : Icons.cancel, color: passed ? LMSTheme.successColor : LMSTheme.errorColor, size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(a.testTitle ?? a.testId, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: LMSTheme.successColor.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: LMSTheme.successColor, width: 1),
+                          ),
+                          child: Text('Attempted • $pct%', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: LMSTheme.successColor)),
+                        ),
                       ],
                     ),
                   );
@@ -376,7 +492,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               child: Center(
                 child: Text(
                   'No accuracy data yet. Take tests to see correct vs incorrect.',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -389,14 +505,14 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
             color: LMSTheme.successColor,
             title: '$correct',
             radius: 40,
-            titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+            titleStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w600, fontSize: 14),
           ),
           PieChartSectionData(
             value: incorrect.toDouble(),
             color: LMSTheme.errorColor,
             title: '$incorrect',
             radius: 40,
-            titleStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 14),
+            titleStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w600, fontSize: 14),
           ),
         ];
         return Card(
@@ -467,7 +583,7 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
               child: Center(
                 child: Text(
                   'No time-per-question data yet. Submit a test with timer to see it here.',
-                  style: TextStyle(color: Colors.grey.shade600),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -475,7 +591,14 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
           );
         }
         final entries = attempt.timeSpentPerQuestion.entries.toList()
-          ..sort((a, b) => int.tryParse(a.key)?.compareTo(int.tryParse(b.key) ?? 0) ?? 0);
+          ..sort((a, b) {
+            final ai = int.tryParse(a.key);
+            final bi = int.tryParse(b.key);
+            if (ai != null && bi != null) return ai.compareTo(bi);
+            if (ai != null) return 1;
+            if (bi != null) return -1;
+            return a.key.compareTo(b.key);
+          });
         final barGroups = entries.asMap().entries.map((e) {
           final i = e.key;
           final kv = e.value;
@@ -522,7 +645,16 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                       barTouchData: BarTouchData(enabled: true),
                       titlesData: FlTitlesData(
                         leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 32, getTitlesWidget: (v, _) => Text('${v.toInt()}s'))),
-                        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text('Q${v.toInt() + 1}'))),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            getTitlesWidget: (v, _) => Transform.rotate(
+                              angle: -0.5,
+                              child: Text('Q${v.toInt() + 1}', style: const TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                        ),
                         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
@@ -564,7 +696,16 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                       gridData: FlGridData(show: true, drawVerticalLine: false),
                       titlesData: FlTitlesData(
                         leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 36, getTitlesWidget: (v, _) => Text('${v.toInt()}%'))),
-                        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text('Test ${v.toInt() + 1}'))),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            getTitlesWidget: (v, _) => Transform.rotate(
+                              angle: -0.5,
+                              child: Text('Test ${v.toInt() + 1}', style: const TextStyle(fontSize: 11)),
+                            ),
+                          ),
+                        ),
                         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                       ),
@@ -610,7 +751,7 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade600)),
+            Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const SizedBox(height: 4),
             Text(value, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: color)),
           ],

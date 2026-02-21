@@ -42,6 +42,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onSearch() {
+    if (!mounted) return;
+    FocusScope.of(context).unfocus();
     setState(() => _searchQuery = _searchController.text.trim());
   }
 
@@ -52,7 +54,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return courses.where((c) {
       final title = (c.title).toLowerCase();
       final level = (c.level ?? '').toLowerCase();
-      return title.contains(q) || level.contains(q);
+      final desc = (c.description ?? '').toLowerCase();
+      final subjectMatch = (c.subjectTitles ?? []).any((s) => s.toLowerCase().contains(q));
+      return title.contains(q) || level.contains(q) || desc.contains(q) || subjectMatch;
     }).toList();
   }
 

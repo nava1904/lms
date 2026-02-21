@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../sanity_client_helper.dart';
 import '../theme/lms_theme.dart';
@@ -425,12 +426,37 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
                             ],
                             if (content is Map && content['videoUrl'] != null) ...[
                               const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Icon(Icons.video_library, size: 16, color: theme.colorScheme.primary),
-                                  const SizedBox(width: 8),
-                                  Text('Video included', style: theme.textTheme.labelSmall),
-                                ],
+                              InkWell(
+                                onTap: () async {
+                                  final url = content['videoUrl'] as String?;
+                                  if (url != null && url.isNotEmpty) {
+                                    final uri = Uri.tryParse(url);
+                                    if (uri != null) {
+                                      try {
+                                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      } catch (_) {
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('Could not open: $url')),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 4),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.play_circle_filled, size: 20, color: theme.colorScheme.primary),
+                                      const SizedBox(width: 8),
+                                      Text('Watch video', style: theme.textTheme.labelMedium?.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w500)),
+                                      const SizedBox(width: 4),
+                                      Icon(Icons.open_in_new, size: 14, color: theme.colorScheme.primary),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ],
                           ],

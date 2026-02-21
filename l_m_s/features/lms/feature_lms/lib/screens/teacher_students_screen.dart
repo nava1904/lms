@@ -58,6 +58,21 @@ class _TeacherStudentsScreenState extends State<TeacherStudentsScreen> {
     return (sum / byStudent.length).round();
   }
 
+  int _testsTaken(String? studentId) {
+    if (studentId == null) return 0;
+    return _testAttempts.where((a) => a['student']?['_id'] == studentId).length;
+  }
+
+  List<Map<String, dynamic>> get _sortedStudents {
+    final list = List<Map<String, dynamic>>.from(_students);
+    list.sort((a, b) {
+      final ra = a['rollNumber'] as String? ?? '';
+      final rb = b['rollNumber'] as String? ?? '';
+      return ra.compareTo(rb);
+    });
+    return list;
+  }
+
   String _enrolledCourseNames(dynamic enrolled) {
     if (enrolled == null) return '—';
     if (enrolled is List) {
@@ -118,10 +133,11 @@ class _TeacherStudentsScreenState extends State<TeacherStudentsScreen> {
                             DataColumn(label: Text('Email')),
                             DataColumn(label: Text('Enrolled course')),
                             DataColumn(label: Text('Last active')),
+                            DataColumn(label: Text('Tests taken')),
                             DataColumn(label: Text('Avg score')),
                             DataColumn(label: Text('Completion %')),
                           ],
-                          rows: _students.map((s) {
+                          rows: _sortedStudents.map((s) {
                             final id = s['_id'] as String?;
                             return DataRow(
                               onSelectChanged: (_) => id != null ? context.push('/teacher/students/$id', extra: s) : null,
@@ -130,6 +146,7 @@ class _TeacherStudentsScreenState extends State<TeacherStudentsScreen> {
                                 DataCell(Text(s['email'] as String? ?? '—')),
                                 DataCell(Text(_enrolledCourseNames(s['enrolledCourses']))),
                                 DataCell(Text(_lastActive(id))),
+                                DataCell(Text('${_testsTaken(id)}')),
                                 DataCell(Text('${_avgScore(id)}%')),
                                 DataCell(Text('—')),
                               ],

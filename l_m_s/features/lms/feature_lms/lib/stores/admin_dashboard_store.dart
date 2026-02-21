@@ -43,4 +43,12 @@ abstract class _AdminDashboardStore with Store {
       loading = false;
     }
   }
+
+  @action
+  void clear() {
+    totalStudents = 0;
+    totalTeachers = 0;
+    activeEnrollments = 0;
+    error = null;
+  }
 }

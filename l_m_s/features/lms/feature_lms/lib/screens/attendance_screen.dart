@@ -25,8 +25,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   String _dateStr() => DateTime.now().toIso8601String().split('T').first;
 
-  String _statusFor(AttendanceRecord r) =>
-      _store.statusOverrides[r.studentId] ?? r.status;
+  String _statusFor(AttendanceRecord r) {
+    final override = _store.statusOverrides[r.studentId];
+    if (override == 'unmarked') return 'unmarked';
+    return override ?? r.status;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -75,12 +78,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         Text('Batch', style: Theme.of(context).textTheme.labelLarge),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _selectedBatchId,
+                          value: _store.batches.any((b) => (b['_id'] as String? ?? '') == _selectedBatchId)
+                              ? _selectedBatchId
+                              : null,
                           decoration: const InputDecoration(
                             border: OutlineInputBorder(),
                             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           ),
-                          hint: const Text('Select batch'),
+                          hint: Text(_store.batches.isEmpty ? 'No batches found' : 'Select batch'),
                           items: _store.batches.map((b) {
                             final id = b['_id'] as String? ?? '';
                             final name = b['name'] as String? ?? id;
@@ -121,7 +126,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             child: Center(
                               child: Text(
                                 'No students in this batch',
-                                style: TextStyle(color: Colors.grey.shade600),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                               ),
                             ),
                           ),
@@ -145,7 +150,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             ],
                           ),
                           const SizedBox(height: 12),
-                          ..._store.records.map((r) => _buildRow(r)),
+                          ..._store.records.map((r) => Observer(
+                            builder: (_) => _buildRow(r),
+                          )),
                         ],
                       );
                     },
@@ -182,7 +189,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(r.studentName ?? 'Student', style: const TextStyle(fontWeight: FontWeight.w500)),
-                  if (r.studentId.isNotEmpty) Text(r.studentId, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                  if (r.studentId.isNotEmpty) Text(r.studentId, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
@@ -192,9 +199,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 ButtonSegment(value: 'absent', label: Text('Absent'), icon: Icon(Icons.cancel, size: 18)),
                 ButtonSegment(value: 'late', label: Text('Late'), icon: Icon(Icons.schedule, size: 18)),
               ],
-              selected: {status},
+              selected: status == 'unmarked' ? <String>{} : {status},
+              emptySelectionAllowed: true,
               onSelectionChanged: (Set<String> sel) {
-                if (sel.isNotEmpty) _store.setStatus(r.studentId, sel.first);
+                if (sel.isEmpty) {
+                  _store.clearStatus(r.studentId);
+                } else if (sel.first == status) {
+                  // Tap same segment = unselect (fallback when emptySelectionAllowed doesn't fire)
+                  _store.clearStatus(r.studentId);
+                } else {
+                  _store.setStatus(r.studentId, sel.first);
+                }
+                setState(() {}); // Force rebuild so SegmentedButton reflects change
               },
             ),
           ],
@@ -212,6 +228,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (ok) saved++;
     }
     if (mounted) {
+      // Reload to get new document ids for created records (needed for future unmark)
+      if (_selectedBatchId != null) {
+        await _store.loadBatchStudents(_selectedBatchId!);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Saved $saved attendance record(s)'),

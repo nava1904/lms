@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/current_admin_holder.dart';
 import '../core/current_student_holder.dart';
+import '../core/current_teacher_holder.dart';
 import '../theme/lms_theme.dart';
 import '../theme/theme_mode_holder.dart';
 import 'edtech_sidebar.dart';
@@ -20,10 +22,14 @@ class LmsShell extends StatefulWidget {
 class _LmsShellState extends State<LmsShell> {
   static const double _sidebarBreakpoint = 700;
 
-  bool _isAdmin(BuildContext context) =>
-      GoRouterState.of(context).uri.path.contains('admin');
-  bool _isTeacher(BuildContext context) =>
-      GoRouterState.of(context).uri.path.contains('teacher');
+  bool _isAdmin(BuildContext context) {
+    final path = GoRouterState.of(context).uri.path;
+    return path.contains('admin') || (CurrentAdminHolder.adminId ?? '').isNotEmpty;
+  }
+  bool _isTeacher(BuildContext context) {
+    if (_isAdmin(context)) return false;
+    return GoRouterState.of(context).uri.path.contains('teacher');
+  }
 
   @override
   void initState() {
@@ -149,7 +155,31 @@ class _LmsShellState extends State<LmsShell> {
 
   void _goTo(BuildContext context, String path) {
     final state = GoRouterState.of(context);
-    final isStudent = !_isAdmin(context) && !_isTeacher(context);
+    final isAdmin = _isAdmin(context);
+    final isTeacher = _isTeacher(context);
+    final isStudent = !isAdmin && !isTeacher;
+    if (isAdmin && path == '/admin-dashboard') {
+      final id = CurrentAdminHolder.adminId ?? '';
+      if (id.isNotEmpty) {
+        context.go('/admin-dashboard', extra: {
+          'adminId': id,
+          'adminName': CurrentAdminHolder.adminName ?? 'Admin',
+          'adminEmail': CurrentAdminHolder.adminEmail ?? '',
+          'adminRole': CurrentAdminHolder.adminRole ?? 'admin',
+        });
+        return;
+      }
+    }
+    if (isTeacher && (path == '/teacher-dashboard' || path == '/teacher/settings')) {
+      final id = CurrentTeacherHolder.teacherId ?? '';
+      if (id.isNotEmpty) {
+        context.go(path, extra: {
+          'teacherId': id,
+          'teacherName': CurrentTeacherHolder.teacherName ?? 'Teacher',
+        });
+        return;
+      }
+    }
     if (isStudent && path == '/student-dashboard') {
       final id = CurrentStudentHolder.studentId ?? state.pathParameters['studentId'] ?? '';
       if (id.isNotEmpty) {
@@ -184,6 +214,7 @@ class _LmsShellState extends State<LmsShell> {
     context.go(path);
   }
 }
+
 
 class _NavItem {
   final IconData icon;

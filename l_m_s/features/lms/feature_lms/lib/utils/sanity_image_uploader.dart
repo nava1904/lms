@@ -1,15 +1,16 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
+
+import '../sanity_client_helper.dart';
 
 class SanityImageUploader {
   static Future<String?> uploadImage(List<int> imageBytes, String filename) async {
     try {
       const projectId = 'w18438cu';
       const dataset = 'production';
-      final token = dotenv.env['SANITY_API_TOKEN'] ?? dotenv.env['SANITY_TOKEN'] ?? '';
+      final token = SanityClientHelper.effectiveToken ?? '';
 
       final url = Uri.https(
         '$projectId.api.sanity.io',

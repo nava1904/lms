@@ -61,4 +61,11 @@ abstract class _TeacherDashboardStore with Store {
       loading = false;
     }
   }
+
+  @action
+  void clear() {
+    batchStudents = [];
+    lastTestAverageScore = 0;
+    error = null;
+  }
 }

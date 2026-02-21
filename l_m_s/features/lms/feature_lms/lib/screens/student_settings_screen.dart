@@ -127,6 +127,36 @@ class _StudentSettingsScreenState extends State<StudentSettingsScreen> {
                     borderRadius: BorderRadius.circular(LMSTheme.radiusMd),
                     side: const BorderSide(color: LMSTheme.borderColor),
                   ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Privacy',
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.visibility_outlined, size: 20),
+                          title: const Text('Progress visibility'),
+                          subtitle: Text(
+                            'Your progress is visible only to you and your teachers.',
+                            style: theme.textTheme.bodySmall?.copyWith(color: LMSTheme.mutedForeground),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(LMSTheme.radiusMd),
+                    side: const BorderSide(color: LMSTheme.borderColor),
+                  ),
                   child: Column(
                     children: [
                       ValueListenableBuilder<ThemeMode>(

@@ -22,8 +22,11 @@ class AttendanceRecord {
 
   factory AttendanceRecord.fromMap(Map<String, dynamic> map) {
     String studentId = '';
-    if (map['student'] is Map) studentId = (map['student']['_ref'] ?? map['student']['_id'] ?? '').toString();
-    if (studentId.isEmpty) studentId = map['studentId'] as String? ?? '';
+    if (map['student'] is Map) {
+      final s = map['student'] as Map;
+      studentId = (s['_ref'] ?? s['_id'] ?? '').toString();
+    }
+    if (studentId.isEmpty) studentId = (map['studentId']?.toString() ?? '').trim();
     String? studentName;
     if (map['student'] is Map && map['student']['name'] != null) studentName = map['student']['name'] as String?;
 
@@ -32,11 +35,15 @@ class AttendanceRecord {
     if (d != null) {
       if (d is DateTime) {
         date = d;
-      } else if (d is String) date = DateTime.tryParse(d);
+      } else if (d is String) {
+        date = DateTime.tryParse(d);
+      }
     }
 
+    final rawId = map['_id'];
+    final id = (rawId?.toString() ?? '').replaceFirst(RegExp(r'^drafts\.'), '');
     return AttendanceRecord(
-      id: map['_id'] as String? ?? '',
+      id: id,
       studentId: studentId,
       studentName: studentName,
       date: date,

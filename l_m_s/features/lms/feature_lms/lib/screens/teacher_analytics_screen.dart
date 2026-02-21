@@ -82,7 +82,7 @@ class _TeacherAnalyticsScreenState extends State<TeacherAnalyticsScreen> {
     byTopic.forEach((key, results) {
       if (results.isEmpty) return;
       final pct = (results.where((b) => b).length / results.length) * 100;
-      if (pct < 60) weak.add({'topic': key, 'accuracyPercent': pct, 'attempts': results.length});
+      if (pct < 50) weak.add({'topic': key, 'accuracyPercent': pct, 'attempts': results.length});
     });
     weak.sort((a, b) => (a['accuracyPercent'] as num).compareTo(b['accuracyPercent'] as num));
     return weak;

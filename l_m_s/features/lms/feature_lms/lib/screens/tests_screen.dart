@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../core/current_student_holder.dart';
+import '../models/models.dart';
+import '../services/lms_sanity_service.dart';
 import '../services/sanity_service.dart';
+import '../theme/lms_theme.dart';
 
 class TestsScreen extends StatefulWidget {
   const TestsScreen({super.key});
@@ -11,7 +15,9 @@ class TestsScreen extends StatefulWidget {
 
 class _TestsScreenState extends State<TestsScreen> {
   final SanityService _sanityService = SanityService();
+  final LmsSanityService _lmsService = LmsSanityService();
   List<Map<String, dynamic>> _assessments = [];
+  Set<String> _attemptedTestIds = {};
   bool _isLoading = true;
 
   @override
@@ -23,9 +29,19 @@ class _TestsScreenState extends State<TestsScreen> {
   Future<void> _loadAssessments() async {
     setState(() => _isLoading = true);
     try {
-      final assessments = await _sanityService.fetchAssessments();
+      final studentId = CurrentStudentHolder.studentId ?? '';
+      final results = await Future.wait([
+        _sanityService.fetchAssessments(),
+        studentId.isNotEmpty
+            ? _lmsService.getTestAttemptsForStudent(studentId)
+            : Future<List<TestAttempt>>.value([]),
+      ]);
+      final assessments = results[0] as List<Map<String, dynamic>>;
+      final attempts = results[1] as List<TestAttempt>;
+      final attemptedIds = attempts.map((a) => a.testId).toSet();
       setState(() {
         _assessments = assessments;
+        _attemptedTestIds = attemptedIds;
         _isLoading = false;
       });
     } catch (e) {
@@ -104,12 +120,14 @@ class _TestsScreenState extends State<TestsScreen> {
       itemCount: _assessments.length,
       itemBuilder: (context, index) {
         final assessment = _assessments[index];
-        return _buildAssessmentCard(theme, assessment);
+        final testId = assessment['_id'] as String? ?? '';
+        final hasAttempted = _attemptedTestIds.contains(testId);
+        return _buildAssessmentCard(theme, assessment, hasAttempted);
       },
     );
   }
 
-  Widget _buildAssessmentCard(ThemeData theme, Map<String, dynamic> assessment) {
+  Widget _buildAssessmentCard(ThemeData theme, Map<String, dynamic> assessment, bool hasAttempted) {
     final duration = (assessment['durationMinutes'] ?? assessment['duration']) ?? 60;
     final totalMarks = (assessment['totalMarks'] as num?)?.toInt() ?? 100;
     final passingMarks = (assessment['passingMarks'] as num?)?.toDouble() ?? 40;
@@ -164,6 +182,30 @@ class _TestsScreenState extends State<TestsScreen> {
                       ],
                     ),
                   ),
+                  if (hasAttempted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: LMSTheme.successColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: LMSTheme.successColor, width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, size: 14, color: LMSTheme.successColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Attempted',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: LMSTheme.successColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 16),

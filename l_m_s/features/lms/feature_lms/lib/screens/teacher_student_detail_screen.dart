@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../theme/lms_theme.dart';
+import '../models/attendance.dart';
+import '../services/lms_sanity_service.dart';
 import '../services/sanity_service.dart';
+import '../theme/lms_theme.dart';
 
 /// Student detail: tabs Test Results, Weak Topics, Attendance, Time Spent, Assigned Worksheets.
 class TeacherStudentDetailScreen extends StatefulWidget {
@@ -18,13 +20,15 @@ class _TeacherStudentDetailScreenState extends State<TeacherStudentDetailScreen>
   final SanityService _sanity = SanityService();
   late TabController _tabController;
   List<Map<String, dynamic>> _attempts = [];
+  List<AttendanceRecord> _attendance = [];
   bool _loading = true;
+  String? _loadError;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
-    _loadAttempts();
+    _loadData();
   }
 
   @override
@@ -33,13 +37,31 @@ class _TeacherStudentDetailScreenState extends State<TeacherStudentDetailScreen>
     super.dispose();
   }
 
-  Future<void> _loadAttempts() async {
-    setState(() => _loading = true);
+  Future<void> _loadData() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
-      final list = await _sanity.fetchTestAttempts(studentId: widget.studentId);
-      if (mounted) setState(() { _attempts = list; _loading = false; });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      final results = await Future.wait([
+        _sanity.fetchTestAttempts(studentId: widget.studentId),
+        LmsSanityService().getAttendanceForStudent(widget.studentId),
+      ]);
+      if (mounted) {
+        setState(() {
+          _attempts = results[0] as List<Map<String, dynamic>>;
+          _attendance = results[1] as List<AttendanceRecord>;
+          _loading = false;
+          _loadError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadError = e.toString();
+        });
+      }
     }
   }
 
@@ -130,17 +152,85 @@ class _TeacherStudentDetailScreenState extends State<TeacherStudentDetailScreen>
   }
 
   Widget _buildAttendance(ThemeData theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.calendar_today, size: 48, color: LMSTheme.mutedForeground),
-          const SizedBox(height: 16),
-          Text('Attendance records', style: theme.textTheme.bodyMedium?.copyWith(color: LMSTheme.mutedForeground)),
-          const SizedBox(height: 8),
-          const Text('Fetch from Sanity attendance by student.', style: TextStyle(color: LMSTheme.mutedForeground, fontSize: 12)),
-        ],
-      ),
+    if (_loadError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: LMSTheme.errorColor),
+              const SizedBox(height: 16),
+              Text(_loadError!, style: theme.textTheme.bodyMedium?.copyWith(color: LMSTheme.errorColor), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _loadData,
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_attendance.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.calendar_today, size: 48, color: LMSTheme.mutedForeground),
+            const SizedBox(height: 16),
+            Text('No attendance records', style: theme.textTheme.bodyMedium?.copyWith(color: LMSTheme.mutedForeground)),
+          ],
+        ),
+      );
+    }
+    final attended = _attendance.where((a) => a.status == 'present' || a.status == 'late').length;
+    final percent = _attendance.isEmpty ? 0 : ((attended / _attendance.length) * 100).round();
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Column(
+                  children: [
+                    Text('$percent%', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: LMSTheme.primaryColor)),
+                    Text('Attendance', style: theme.textTheme.bodySmall?.copyWith(color: LMSTheme.mutedForeground)),
+                  ],
+                ),
+                Column(
+                  children: [
+                    Text('${_attendance.length}', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                    Text('Days marked', style: theme.textTheme.bodySmall?.copyWith(color: LMSTheme.mutedForeground)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        ..._attendance.map((a) {
+          final isPresent = a.status == 'present' || a.status == 'late';
+          final dateStr = a.date != null
+              ? '${a.date!.year}-${a.date!.month.toString().padLeft(2, '0')}-${a.date!.day.toString().padLeft(2, '0')}'
+              : '';
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Icon(
+                isPresent ? Icons.check_circle : Icons.cancel,
+                color: isPresent ? LMSTheme.successColor : LMSTheme.errorColor,
+              ),
+              title: Text(dateStr),
+              subtitle: Text(a.status),
+            ),
+          );
+        }),
+      ],
     );
   }
 

@@ -143,10 +143,75 @@ class LmsSanityService {
     return AdBanner.fromMap(one);
   }
 
+  Future<List<Map<String, dynamic>>> getAllAdBanners() async {
+    return _fetchList(LmsQueries.adBannerList);
+  }
+
+  Future<String?> createAdBanner({
+    required String headline,
+    String? description,
+    String? callToAction,
+    String? imageAssetId,
+    bool active = true,
+  }) async {
+    final id = 'adBanner-${DateTime.now().millisecondsSinceEpoch}';
+    final doc = <String, dynamic>{
+      '_type': 'adBanner',
+      '_id': id,
+      'headline': headline,
+      'callToAction': callToAction,
+      'active': active,
+    };
+    if (description != null && description.isNotEmpty) doc['description'] = description;
+    if (imageAssetId != null && imageAssetId.isNotEmpty) {
+      doc['image'] = {'_type': 'image', 'asset': {'_type': 'reference', '_ref': imageAssetId}};
+    }
+    final res = await mutateLms([{'create': doc}]);
+    return res != null ? id : null;
+  }
+
+  Future<String?> updateAdBanner(String id, {String? headline, String? description, String? callToAction, String? imageAssetId, bool? active}) async {
+    final set = <String, dynamic>{};
+    if (headline != null) set['headline'] = headline;
+    if (description != null) set['description'] = description;
+    if (callToAction != null) set['callToAction'] = callToAction;
+    if (active != null) set['active'] = active;
+    if (imageAssetId != null) {
+      set['image'] = {'_type': 'image', 'asset': {'_type': 'reference', '_ref': imageAssetId}};
+    }
+    if (set.isEmpty) return id;
+    final res = await mutateLms([{'patch': {'id': id, 'set': set}}]);
+    return res != null ? id : null;
+  }
+
+  Future<bool> deleteAdBanner(String id) async {
+    final baseId = id.replaceFirst(RegExp(r'^drafts\.'), '');
+    final res = await mutateLms([{'delete': {'id': baseId}}]);
+    return res != null;
+  }
+
   // ─── Attendance ─────────────────────────────────────────────────────────
 
   Future<List<AttendanceRecord>> getAttendanceList() async {
     final list = await _fetchList(LmsQueries.attendanceList);
+    return list.map((e) => AttendanceRecord.fromMap(e)).toList();
+  }
+
+  /// Fetch attendance for a specific date (used when loading batch to merge existing).
+  Future<List<AttendanceRecord>> getAttendanceForDate(String date) async {
+    final list = await _fetchList(LmsQueries.attendanceByDate, params: {'date': date});
+    return list.map((e) => AttendanceRecord.fromMap(e)).toList();
+  }
+
+  /// Fetch all attendance for computing percentages (used by teacher dashboard).
+  Future<List<AttendanceRecord>> getAttendanceForPercentages() async {
+    final list = await _fetchList(LmsQueries.attendanceForPercentages);
+    return list.map((e) => AttendanceRecord.fromMap(e)).toList();
+  }
+
+  /// Fetch attendance for a specific student (used by student detail screen).
+  Future<List<AttendanceRecord>> getAttendanceForStudent(String studentId) async {
+    final list = await _fetchList(LmsQueries.attendanceByStudent, params: {'studentId': studentId});
     return list.map((e) => AttendanceRecord.fromMap(e)).toList();
   }
 
@@ -215,7 +280,7 @@ class LmsSanityService {
     final createId = 'attendance-${DateTime.now().millisecondsSinceEpoch}';
     final mutations = [
       {
-        'create': {
+        'createOrReplace': {
           '_type': 'attendance',
           '_id': createId,
           'student': {'_type': 'reference', '_ref': studentId},
@@ -225,5 +290,13 @@ class LmsSanityService {
       },
     ];
     return mutateLms(mutations);
+  }
+
+  /// Delete an attendance record (for unmarking).
+  Future<String?> deleteAttendance(String id) async {
+    if (id.isEmpty) return null;
+    // Strip drafts. prefix so we delete the published doc (or use base id)
+    final baseId = id.replaceFirst(RegExp(r'^drafts\.'), '');
+    return mutateLms([{'delete': {'id': baseId}}]);
   }
 }

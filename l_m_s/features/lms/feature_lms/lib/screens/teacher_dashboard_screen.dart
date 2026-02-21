@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:go_router/go_router.dart';
+import '../core/session_clearer.dart';
+import '../models/attendance.dart';
+import '../services/lms_sanity_service.dart';
 import '../services/sanity_service.dart';
+import '../stores/teacher_content_store.dart';
 import '../stores/teacher_dashboard_store.dart';
 import '../theme/lms_theme.dart';
 
@@ -21,16 +25,14 @@ class TeacherDashboardScreen extends StatefulWidget {
 
 class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   final TeacherDashboardStore _metricsStore = TeacherDashboardStore();
+  final TeacherContentStore _contentStore = TeacherContentStore();
   final SanityService _sanityService = SanityService();
   int _selectedIndex = 0;
   
   // Data (legacy tabs still use SanityService)
   List<Map<String, dynamic>> _students = [];
-  List<Map<String, dynamic>> _subjects = [];
-  List<Map<String, dynamic>> _chapters = [];
-  List<Map<String, dynamic>> _tests = [];
   List<Map<String, dynamic>> _testAttempts = [];
-  List<Map<String, dynamic>> _questions = [];
+  List<AttendanceRecord> _attendanceRecords = [];
   bool _isLoading = true;
   String? _loadError;
 
@@ -53,15 +55,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       final tests = await _sanityService.fetchTests();
       final testAttempts = await _sanityService.fetchTestAttempts();
       final questions = await _sanityService.fetchQuestions();
+      final attendanceRecords = await LmsSanityService().getAttendanceForPercentages();
       await _sanityService.getDashboardStats();
       if (mounted) {
         setState(() {
           _students = students;
-          _subjects = subjects;
-          _chapters = chapters;
-          _tests = tests;
+          _contentStore.setSubjects(subjects);
+          _contentStore.setChapters(chapters);
+          _contentStore.setTests(tests);
+          _contentStore.setQuestions(questions);
           _testAttempts = testAttempts;
-          _questions = questions;
+          _attendanceRecords = attendanceRecords;
           _isLoading = false;
         });
       }
@@ -80,8 +84,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: LMSTheme.surfaceColor,
+      backgroundColor: theme.scaffoldBackgroundColor,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: LMSTheme.primaryColor))
           : _loadError != null
@@ -106,12 +111,12 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.cloud_off, size: 48, color: LMSTheme.mutedForeground),
+                Icon(Icons.cloud_off, size: 48, color: Theme.of(context).colorScheme.onSurfaceVariant),
                 const SizedBox(height: 16),
                 Text(
                   'Could not load dashboard',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: LMSTheme.onSurfaceColor,
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -120,7 +125,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   _loadError!,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: LMSTheme.mutedForeground,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -130,7 +135,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   label: const Text('Retry'),
                   style: FilledButton.styleFrom(
                     backgroundColor: LMSTheme.primaryColor,
-                    foregroundColor: Colors.white,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   ),
                 ),
               ],
@@ -244,9 +249,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Welcome, ${widget.teacherName}!',
+            'Welcome, ${widget.teacherName.isNotEmpty ? widget.teacherName : 'Teacher'}!',
             style: theme.textTheme.headlineMedium?.copyWith(
-              color: LMSTheme.onSurfaceColor,
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -268,7 +273,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         'Class metrics',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: LMSTheme.onSurfaceColor,
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                       if (_metricsStore.loading)
@@ -308,18 +313,18 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             children: [
               _buildQuickStat('My Students', _students.length, Icons.people, LMSTheme.primaryColor),
               const SizedBox(width: 16),
-              _buildQuickStat('Subjects', _subjects.length, Icons.book, LMSTheme.successColor),
+              _buildQuickStat('Subjects', _contentStore.subjects.length, Icons.book, LMSTheme.successColor),
               const SizedBox(width: 16),
-              _buildQuickStat('Chapters', _chapters.length, Icons.article, LMSTheme.warningColor),
+              _buildQuickStat('Chapters', _contentStore.chapters.length, Icons.article, LMSTheme.warningColor),
               const SizedBox(width: 16),
-              _buildQuickStat('Tests Created', _tests.length, Icons.quiz, LMSTheme.primaryColor),
+              _buildQuickStat('Tests Created', _contentStore.tests.length, Icons.quiz, LMSTheme.primaryColor),
             ],
           ),
           const SizedBox(height: 32),
           Text(
             'Recent Test Results',
             style: theme.textTheme.titleLarge?.copyWith(
-              color: LMSTheme.onSurfaceColor,
+              color: theme.colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -331,12 +336,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildQuickStat(String title, Object value, IconData icon, Color color) {
+    final theme = Theme.of(context);
     return Expanded(
       child: Card(
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(LMSTheme.radiusMd),
-          side: const BorderSide(color: LMSTheme.borderColor),
+          side: BorderSide(color: theme.dividerColor),
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -349,14 +355,14 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w700,
-                  color: LMSTheme.onSurfaceColor,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 title,
-                style: const TextStyle(
-                  color: LMSTheme.mutedForeground,
+                style: TextStyle(
+                  color: theme.colorScheme.onSurfaceVariant,
                   fontSize: 13,
                 ),
               ),
@@ -379,7 +385,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           padding: const EdgeInsets.all(24),
           child: Text(
             'No test attempts yet',
-            style: TextStyle(color: LMSTheme.mutedForeground),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
       );
@@ -404,7 +410,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             DataCell(Text('${attempt['score'] ?? 0}/${attempt['test']?['totalMarks'] ?? 100}')),
             DataCell(Chip(
               label: Text(attempt['passed'] == true ? 'Passed' : 'Failed'),
-              backgroundColor: attempt['passed'] == true ? Colors.green[100] : Colors.red[100],
+              backgroundColor: attempt['passed'] == true
+                  ? LMSTheme.successColor.withValues(alpha: 0.2)
+                  : LMSTheme.errorColor.withValues(alpha: 0.2),
             )),
           ]);
         }).toList(),
@@ -444,7 +452,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: ExpansionTile(
                       leading: CircleAvatar(
-                        backgroundColor: Colors.blue,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         child: Text(student['name']?.substring(0, 1) ?? 'S'),
                       ),
                       title: Text(student['name'] ?? 'Unknown'),
@@ -476,36 +484,46 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildStudentStat(String label, String value) {
+    final theme = Theme.of(context);
     return Column(
       children: [
-        Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Colors.grey)),
+        Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+        Text(label, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
       ],
     );
   }
 
   int _getStudentTestCount(String? studentId) {
-    if (studentId == null) return 0;
-    return _testAttempts.where((a) => a['student']?['_id'] == studentId).length;
+    if (studentId == null || studentId.isEmpty) return 0;
+    return _testAttempts.where((a) {
+      final sid = a['student']?['_id'] ?? a['student']?['_ref'];
+      return sid == studentId;
+    }).length;
   }
 
   int _getStudentAvgScore(String? studentId) {
-    if (studentId == null) return 0;
-    final attempts = _testAttempts.where((a) => a['student']?['_id'] == studentId).toList();
+    if (studentId == null || studentId.isEmpty) return 0;
+    final attempts = _testAttempts.where((a) {
+      final sid = a['student']?['_id'] ?? a['student']?['_ref'];
+      return sid == studentId;
+    }).toList();
     if (attempts.isEmpty) return 0;
     final total = attempts.fold<double>(0, (sum, a) => sum + (a['percentage'] ?? 0).toDouble());
     return (total / attempts.length).round();
   }
 
   int _getStudentAttendance(String? studentId) {
-    // Placeholder - would need to fetch actual attendance
-    return 85;
+    if (studentId == null) return 0;
+    final records = _attendanceRecords.where((a) => a.studentId == studentId).toList();
+    if (records.isEmpty) return 0;
+    final attended = records.where((a) => a.status == 'present' || a.status == 'late').length;
+    return ((attended / records.length) * 100).round();
   }
 
   void _viewStudentDetails(Map<String, dynamic> student) {
     final studentId = student['_id'] as String? ?? '';
     if (studentId.isNotEmpty) {
-      context.go('/analytics', extra: {'studentId': studentId});
+      context.push('/teacher/students/$studentId', extra: student);
       return;
     }
     showDialog(
@@ -524,7 +542,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
               const SizedBox(height: 16),
               const Text('Test History:', style: TextStyle(fontWeight: FontWeight.bold)),
               ..._testAttempts
-                  .where((a) => a['student']?['_id'] == student['_id'])
+                  .where((a) {
+                    final sid = a['student']?['_id'] ?? a['student']?['_ref'];
+                    return sid == student['_id'];
+                  })
                   .map((a) => ListTile(
                         title: Text(a['test']?['title'] ?? 'Test'),
                         subtitle: Text('Score: ${a['score']} • ${a['passed'] == true ? 'Passed' : 'Failed'}'),
@@ -569,6 +590,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
+  List<Map<String, dynamic>> get _sortedSubjects {
+    final list = List<Map<String, dynamic>>.from(_contentStore.subjects);
+    list.sort((a, b) {
+      final ta = (a['title'] as String? ?? '').toLowerCase();
+      final tb = (b['title'] as String? ?? '').toLowerCase();
+      return ta.compareTo(tb);
+    });
+    return list;
+  }
+
   Widget _buildSubjectsList() {
     return Column(
       children: [
@@ -576,7 +607,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Text('Subjects (${_subjects.length})', style: Theme.of(context).textTheme.titleMedium),
+              Text('Subjects (${_contentStore.subjects.length})', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () => _showAddSubjectDialog(),
@@ -587,18 +618,19 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ),
         ),
         Expanded(
-          child: _subjects.isEmpty
+          child: Observer(
+            builder: (_) => _contentStore.subjects.isEmpty
             ? const Center(child: Text('No subjects yet. Create your first subject!'))
             : ListView.builder(
-                itemCount: _subjects.length,
+                itemCount: _sortedSubjects.length,
                 itemBuilder: (context, index) {
-                  final subject = _subjects[index];
+                  final subject = _sortedSubjects[index];
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: ListTile(
                       leading: const Icon(Icons.book, color: Colors.teal),
                       title: Text(subject['title'] ?? 'Untitled'),
-                      subtitle: Text('${subject['chapterCount'] ?? 0} chapters'),
+                      subtitle: Text('${subject['chapterCount'] ?? 0} chapters • ${subject['lessonCount'] ?? 0} lessons'),
                       trailing: IconButton(
                         icon: const Icon(Icons.add),
                         onPressed: () => _showAddChapterDialog(subject['_id'], subject['title']),
@@ -608,6 +640,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   );
                 },
               ),
+          ),
         ),
       ],
     );
@@ -618,15 +651,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('Chapters (${_chapters.length})', style: Theme.of(context).textTheme.titleMedium),
+          child: Text('Chapters (${_contentStore.chapters.length})', style: Theme.of(context).textTheme.titleMedium),
         ),
         Expanded(
-          child: _chapters.isEmpty
+          child: Observer(
+            builder: (_) => _contentStore.chapters.isEmpty
             ? const Center(child: Text('No chapters yet'))
             : ListView.builder(
-                itemCount: _chapters.length,
+                itemCount: _contentStore.chapters.length,
                 itemBuilder: (context, index) {
-                  final chapter = _chapters[index];
+                  final chapter = _contentStore.chapters[index];
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: ListTile(
@@ -656,6 +690,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   );
                 },
               ),
+          ),
         ),
       ],
     );
@@ -668,7 +703,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Text('Question Bank (${_questions.length})', style: Theme.of(context).textTheme.titleMedium),
+              Text('Question Bank (${_contentStore.questions.length})', style: Theme.of(context).textTheme.titleMedium),
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () => _showAddQuestionDialog(),
@@ -679,12 +714,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           ),
         ),
         Expanded(
-          child: _questions.isEmpty
+          child: Observer(
+            builder: (_) => _contentStore.questions.isEmpty
             ? const Center(child: Text('No questions yet. Create your first question!'))
             : ListView.builder(
-                itemCount: _questions.length,
+                itemCount: _contentStore.questions.length,
                 itemBuilder: (context, index) {
-                  final question = _questions[index];
+                  final question = _contentStore.questions[index];
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                     child: ListTile(
@@ -695,6 +731,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   );
                 },
               ),
+          ),
         ),
       ],
     );
@@ -711,18 +748,19 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              Text('Tests (${_tests.length})', style: Theme.of(context).textTheme.titleLarge),
+              Text('Tests (${_contentStore.tests.length})', style: Theme.of(context).textTheme.titleLarge),
               const Spacer(),
             ],
           ),
         ),
         Expanded(
-          child: _tests.isEmpty
+          child: Observer(
+            builder: (_) => _contentStore.tests.isEmpty
             ? const Center(child: Text('No tests created yet. Create your first test!'))
             : ListView.builder(
-                itemCount: _tests.length,
+                itemCount: _contentStore.tests.length,
                 itemBuilder: (context, index) {
-                  final test = _tests[index];
+                  final test = _contentStore.tests[index];
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Padding(
@@ -737,7 +775,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                               ),
                               Chip(
                                 label: Text(test['isPublished'] == true ? 'Published' : 'Draft'),
-                                backgroundColor: test['isPublished'] == true ? Colors.green[100] : Colors.grey[300],
+                                backgroundColor: test['isPublished'] == true
+                                    ? LMSTheme.successColor.withValues(alpha: 0.2)
+                                    : Theme.of(context).colorScheme.surfaceContainerHighest,
                               ),
                             ],
                           ),
@@ -766,17 +806,19 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   );
                 },
               ),
+          ),
         ),
       ],
     );
   }
 
   Widget _buildTestStat(IconData icon, String text) {
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.grey),
+        Icon(icon, size: 16, color: color),
         const SizedBox(width: 4),
-        Text(text, style: const TextStyle(color: Colors.grey)),
+        Text(text, style: TextStyle(color: color)),
       ],
     );
   }
@@ -808,7 +850,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   DataCell(Text('${r['percentage']}%')),
                   DataCell(Chip(
                     label: Text(r['passed'] == true ? 'Pass' : 'Fail'),
-                    backgroundColor: r['passed'] == true ? Colors.green[100] : Colors.red[100],
+                    backgroundColor: r['passed'] == true
+                        ? LMSTheme.successColor.withValues(alpha: 0.2)
+                        : LMSTheme.errorColor.withValues(alpha: 0.2),
                   )),
                 ])).toList(),
               ),
@@ -857,7 +901,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 DataColumn(label: Text('Pass Rate')),
                 DataColumn(label: Text('Avg Score')),
               ],
-              rows: _tests.map((test) {
+              rows: _contentStore.tests.map((test) {
                 final attempts = _testAttempts.where((a) => a['test']?['_id'] == test['_id']).toList();
                 final passCount = attempts.where((a) => a['passed'] == true).length;
                 final passRate = attempts.isEmpty ? 0 : (passCount / attempts.length * 100).round();
@@ -878,6 +922,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   Widget _buildAnalyticCard(String title, String value, IconData icon, Color color) {
+    final theme = Theme.of(context);
     return Expanded(
       child: Card(
         child: Padding(
@@ -886,8 +931,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
             children: [
               Icon(icon, size: 48, color: color),
               const SizedBox(height: 16),
-              Text(value, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
-              Text(title, style: const TextStyle(color: Colors.grey)),
+              Text(value, style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: theme.colorScheme.onSurface)),
+              Text(title, style: TextStyle(color: theme.colorScheme.onSurfaceVariant)),
             ],
           ),
         ),
@@ -963,8 +1008,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   description: descController.text.isNotEmpty ? descController.text : null,
                 );
                 if (result != null) {
+                  _contentStore.addSubject(result);
                   _showSnackBar('Subject created!', Colors.green);
-                  _loadData();
                 } else {
                   _showSnackBar('Failed to create subject. Configure write token.', Colors.red);
                 }
@@ -978,7 +1023,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   }
 
   void _showSelectSubjectForChapter() {
-    if (_subjects.isEmpty) {
+    if (_contentStore.subjects.isEmpty) {
       _showSnackBar('Create a subject first!', Colors.orange);
       return;
     }
@@ -991,9 +1036,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           width: 300,
           child: ListView.builder(
             shrinkWrap: true,
-            itemCount: _subjects.length,
+            itemCount: _contentStore.subjects.length,
             itemBuilder: (context, index) {
-              final subject = _subjects[index];
+              final subject = _contentStore.subjects[index];
               return ListTile(
                 title: Text(subject['title'] ?? 'Untitled'),
                 onTap: () {
@@ -1035,8 +1080,10 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   subjectId: subjectId,
                 );
                 if (result != null) {
+                  final chapterWithSubject = Map<String, dynamic>.from(result)
+                    ..['subject'] = {'title': subjectTitle, '_id': subjectId};
+                  _contentStore.addChapter(chapterWithSubject);
                   _showSnackBar('Chapter created!', Colors.green);
-                  _loadData();
                 } else {
                   _showSnackBar('Failed to create chapter', Colors.red);
                 }
@@ -1148,8 +1195,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                   marks: marks,
                 );
                 if (result != null) {
+                  _contentStore.addQuestion(result);
                   _showSnackBar('Question created!', Colors.green);
-                  _loadData();
                 } else {
                   _showSnackBar('Failed to create question', Colors.red);
                 }
@@ -1221,44 +1268,64 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
 
   void _showMarkAttendanceDialog() {
     final date = DateTime.now().toString().split(' ')[0];
-    
+    final todayRecords = _attendanceRecords.where((r) {
+      if (r.date == null) return false;
+      final rDate = r.date!.toIso8601String().split('T').first;
+      return rDate == date;
+    }).toList();
+    final Map<String, bool> presentMap = {
+      for (final s in _students) s['_id'] as String: false,
+    };
+    for (final r in todayRecords) {
+      if (presentMap.containsKey(r.studentId)) {
+        presentMap[r.studentId] = r.status == 'present';
+      }
+    }
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Mark Attendance - $date'),
-        content: SizedBox(
-          width: 500,
-          height: 400,
-          child: ListView.builder(
-            itemCount: _students.length,
-            itemBuilder: (context, index) {
-              final student = _students[index];
-              return CheckboxListTile(
-                title: Text(student['name'] ?? 'Unknown'),
-                subtitle: Text(student['rollNumber'] ?? ''),
-                value: true,
-                onChanged: (value) async {
-                  await _sanityService.markAttendance(
-                    studentId: student['_id'],
-                    date: date,
-                    status: value == true ? 'present' : 'absent',
-                    teacherId: widget.teacherId,
-                  );
-                },
-              );
-            },
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Mark Attendance - $date'),
+          content: SizedBox(
+            width: 500,
+            height: 400,
+            child: ListView.builder(
+              itemCount: _students.length,
+              itemBuilder: (context, index) {
+                final student = _students[index];
+                final studentId = student['_id'] as String? ?? '';
+                final isPresent = presentMap[studentId] ?? false;
+                return CheckboxListTile(
+                  title: Text(student['name'] ?? 'Unknown'),
+                  subtitle: Text(student['rollNumber'] ?? ''),
+                  value: isPresent,
+                  onChanged: (value) async {
+                    final newPresent = value == true;
+                    setDialogState(() => presentMap[studentId] = newPresent);
+                    await _sanityService.markAttendance(
+                      studentId: studentId,
+                      date: date,
+                      status: newPresent ? 'present' : 'absent',
+                      teacherId: widget.teacherId,
+                    );
+                  },
+                );
+              },
+            ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _loadData();
+                _showSnackBar('Attendance marked!', Colors.green);
+              },
+              child: const Text('Save'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _showSnackBar('Attendance marked!', Colors.green);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -1271,7 +1338,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         content: const Text('Are you sure?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(onPressed: () { Navigator.pop(context); context.go('/'); }, child: const Text('Logout')),
+          ElevatedButton(onPressed: () { Navigator.pop(context); clearAllSessionData(); context.go('/'); }, child: const Text('Logout')),
         ],
       ),
     );

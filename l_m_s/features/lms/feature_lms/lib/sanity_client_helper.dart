@@ -50,6 +50,7 @@ class LmsQueries {
   ''';
 
   /// Single course by id with full curriculum: subjects -> chapters -> concepts.
+  /// Uses reference-based chapters query (chapters that reference subject).
   /// Use params: {"courseId": "<id>"}
   static const String courseByIdWithCurriculum = r'''
     *[_type == "course" && _id == $courseId][0] {
@@ -65,23 +66,37 @@ class LmsQueries {
         _id,
         title,
         order,
-        "chapters": chapters[]->{ _id, title, "slug": slug.current, order, duration } | order(order asc)
+        "chapters": *[_type == "chapter" && subject._ref == ^._id] | order(order asc) {
+          _id,
+          title,
+          "slug": slug.current,
+          order,
+          duration
+        }
       }
     }
   ''';
 
   /// All chapters for a course (from all its subjects), each with concepts. For curriculum view.
+  /// Uses reference-based concepts query.
   /// Use params: {"courseId": "<id>"}
   static const String chaptersWithConceptsByCourseId = r'''
     *[_type == "chapter" && subject->course._ref == $courseId] | order(subject->order asc, order asc) {
       _id,
       title,
       order,
-      "concepts": concepts[]->{ _id, title, duration, "slug": slug.current } | order(order asc)
+      "concepts": *[_type == "concept" && chapter._ref == ^._id] | order(order asc) {
+        _id,
+        title,
+        duration,
+        "slug": slug.current
+      }
     }
   ''';
 
   /// Course by id with full hierarchy: subjects -> chapters -> concepts (for content dropdown).
+  /// Uses reference-based queries so chapters/concepts created with subject/chapter ref are found
+  /// even when parent's array (subject.chapters, chapter.concepts) is not updated.
   /// Use params: {"courseId": "<id>"}
   static const String courseWithFullCurriculum = r'''
     *[_type == "course" && _id == $courseId][0] {
@@ -97,12 +112,17 @@ class LmsQueries {
         _id,
         title,
         order,
-        "chapters": chapters[]-> | order(order asc) {
+        "chapters": *[_type == "chapter" && subject._ref == ^._id] | order(order asc) {
           _id,
           title,
           "slug": slug.current,
           order,
-          "concepts": concepts[]->{ _id, title, duration, "slug": slug.current } | order(order asc)
+          "concepts": *[_type == "concept" && chapter._ref == ^._id] | order(order asc) {
+            _id,
+            title,
+            duration,
+            "slug": slug.current
+          }
         }
       }
     }
@@ -192,11 +212,57 @@ class LmsQueries {
     }
   ''';
 
+  /// Attendance for a specific date (for loading existing when marking batch).
+  /// Pass params: {"date": "YYYY-MM-DD"}
+  static const String attendanceByDate = r'''
+    *[_type == "attendance" && date == $date] {
+      _id,
+      date,
+      status,
+      "studentId": student._ref
+    }
+  ''';
+
+  /// All attendance records for computing percentages (limit 2000).
+  static const String attendanceForPercentages = r'''
+    *[_type == "attendance"] | order(date desc) [0...2000] {
+      _id,
+      date,
+      status,
+      "studentId": student._ref
+    }
+  ''';
+
+  /// Attendance for a specific student (for student detail screen).
+  /// Pass params: {"studentId": "<id>"}
+  static const String attendanceByStudent = r'''
+    *[_type == "attendance" && student._ref == $studentId] | order(date desc) {
+      _id,
+      date,
+      status,
+      remarks,
+      "studentId": student._ref
+    }
+  ''';
+
   static const String adBanner = r'''
-    *[_type == "adBanner"] | order(_createdAt desc)[0] {
+    *[_type == "adBanner" && active == true] | order(_createdAt desc)[0] {
       _id,
       headline,
       image,
+      callToAction,
+      active
+    }
+  ''';
+
+  /// All ad banners for admin management.
+  static const String adBannerList = r'''
+    *[_type == "adBanner"] | order(_createdAt desc) {
+      _id,
+      headline,
+      description,
+      image,
+      "imageUrl": image.asset->url,
       callToAction,
       active
     }

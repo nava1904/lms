@@ -139,9 +139,22 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Test submitted'),
-        content: Text(ok
-            ? 'Your answers have been saved. Check Analytics for detailed results.'
-            : errorMsg != null && errorMsg.isNotEmpty
+        content: ok
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Your answers have been saved.'),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Areas to improve: Check Analytics for weak topics, per-question breakdown, and recommendations.',
+                    style: TextStyle(fontWeight: FontWeight.w500, color: Theme.of(dialogContext).colorScheme.primary),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Tap "View Analytics & Areas to Improve" below for detailed results.'),
+                ],
+              )
+            : Text(errorMsg != null && errorMsg.isNotEmpty
                 ? 'Submission failed: $errorMsg'
                 : 'Submission may have failed. Set SANITY_API_TOKEN in l_m_s/apps/l_m_s/.env for saves. Check your connection.'),
         actions: [
@@ -162,7 +175,7 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
                   if (context.mounted) context.go('/analytics', extra: {'studentId': studentId});
                 });
               },
-              child: const Text('View analytics'),
+              child: const Text('View Analytics & Areas to Improve'),
             ),
         ],
       ),

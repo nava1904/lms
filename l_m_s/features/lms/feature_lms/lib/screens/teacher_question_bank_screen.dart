@@ -52,7 +52,11 @@ class _TeacherQuestionBankScreenState extends State<TeacherQuestionBankScreen> {
       list = list.where((q) => q['difficulty'] == _filterDifficulty).toList();
     }
     if (_filterType != null) {
-      list = list.where((q) => q['questionType'] == _filterType).toList();
+      final f = _filterType!.toLowerCase().replaceAll(' ', '');
+      list = list.where((q) {
+        final t = (q['questionType'] as String? ?? '').toLowerCase().replaceAll(' ', '');
+        return t == f;
+      }).toList();
     }
     return list;
   }

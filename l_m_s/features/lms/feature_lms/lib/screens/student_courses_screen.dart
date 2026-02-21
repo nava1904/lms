@@ -41,7 +41,9 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
     return courses.where((c) {
       final title = (c.title).toLowerCase();
       final level = (c.level ?? '').toLowerCase();
-      return title.contains(q) || level.contains(q);
+      final desc = (c.description ?? '').toLowerCase();
+      final subjectMatch = (c.subjectTitles ?? []).any((s) => s.toLowerCase().contains(q));
+      return title.contains(q) || level.contains(q) || desc.contains(q) || subjectMatch;
     }).toList();
   }
 
@@ -72,7 +74,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'My Courses',
+                  'Enrolled Courses',
                   style: theme.textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     fontFamily: 'Outfit',
@@ -81,7 +83,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Your enrolled courses and progress',
+                  'View your enrolled courses and track progress',
                   style: theme.textTheme.bodyLarge?.copyWith(color: LMSTheme.mutedForeground),
                 ),
                 const SizedBox(height: 24),
@@ -165,6 +167,7 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
           tags: [],
           features: [],
           progress: _store.currentCourseProgress,
+          accentColor: const Color(0xFF059669),
           onTap: () => context.go('/content', extra: {'courseId': course.id}),
         );
       },
