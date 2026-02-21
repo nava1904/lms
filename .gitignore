@@ -43,7 +43,3 @@
 # Build outputs
 build/
 dist/
-<<<<<<< Updated upstream
-=======
-*.log
->>>>>>> Stashed changes

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sanity_client/sanity_client.dart';
+import '../sanity_client_helper.dart';
 import '../stores/test_store.dart';
 import '../theme/lms_theme.dart';
 
@@ -85,6 +86,7 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
     final studentId = widget.studentId.isNotEmpty ? widget.studentId : 'demo-student';
     final ok = await _store.submitTest(studentId);
     if (!mounted) return;
+    final errorMsg = lastMutationError;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -92,7 +94,9 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
         title: const Text('Test submitted'),
         content: Text(ok
             ? 'Your answers have been saved. Check Analytics for detailed results.'
-            : 'Submission may have failed. Set SANITY_API_TOKEN in .env for saves. Check your connection.'),
+            : errorMsg != null && errorMsg.isNotEmpty
+                ? 'Submission failed: $errorMsg'
+                : 'Submission may have failed. Set SANITY_API_TOKEN in l_m_s/apps/l_m_s/.env for saves. Check your connection.'),
         actions: [
           TextButton(
             onPressed: () {

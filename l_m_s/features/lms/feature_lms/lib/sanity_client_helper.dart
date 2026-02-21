@@ -321,12 +321,18 @@ String? get _effectiveMutationToken {
   return null;
 }
 
+/// Last mutation error message (for UI to display).
+String? lastMutationError;
+
 /// Single mutation helper for LMS. Uses HTTP mutate API with token.
 /// Returns the transaction ID on success, null on failure.
+/// Sets [lastMutationError] when failing so UI can show the reason.
 Future<String?> mutateLms(List<Map<String, dynamic>> mutations) async {
+  lastMutationError = null;
   final token = _effectiveMutationToken;
   if (token == null || token.isEmpty) {
-    debugPrint('LMS mutate: no SANITY_WRITE_TOKEN or SANITY_TOKEN set (set SANITY_API_TOKEN in .env and run from apps/l_m_s)');
+    lastMutationError = 'SANITY_API_TOKEN not set. Add it to l_m_s/apps/l_m_s/.env (get token from sanity.io/manage)';
+    debugPrint('LMS mutate: $lastMutationError');
     return null;
   }
   final url = 'https://$lmsSanityProjectId.api.sanity.io/v2024-01-01/data/mutate/$lmsSanityDataset';
@@ -343,9 +349,20 @@ Future<String?> mutateLms(List<Map<String, dynamic>> mutations) async {
       final body = jsonDecode(response.body);
       return body['transactionId'] as String?;
     }
-    debugPrint('LMS mutate failed: ${response.statusCode} ${response.body}');
+    final body = response.body;
+    if (response.statusCode == 401) {
+      lastMutationError = 'Invalid or expired token. Create a new token at sanity.io/manage';
+    } else if (response.statusCode == 403) {
+      lastMutationError = 'Token lacks write permission. Use Editor or Admin token';
+    } else if (response.statusCode >= 400) {
+      lastMutationError = 'Sanity API error ${response.statusCode}: ${body.length > 120 ? body.substring(0, 120) + "..." : body}';
+    } else {
+      lastMutationError = 'Sanity API error: ${response.statusCode}';
+    }
+    debugPrint('LMS mutate failed: $lastMutationError');
     return null;
   } catch (e) {
+    lastMutationError = 'Network error: $e';
     debugPrint('LMS mutate error: $e');
     return null;
   }
