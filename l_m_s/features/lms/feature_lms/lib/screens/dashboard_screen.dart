@@ -25,12 +25,35 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final DashboardStore _store = DashboardStore();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _store.loadDashboard(widget.studentId);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearch() {
+    setState(() => _searchQuery = _searchController.text.trim());
+  }
+
+  List<Course> get _filteredCourses {
+    final courses = _store.enrolledCourses;
+    if (_searchQuery.isEmpty) return courses;
+    final q = _searchQuery.toLowerCase();
+    return courses.where((c) {
+      final title = (c.title).toLowerCase();
+      final level = (c.level ?? '').toLowerCase();
+      return title.contains(q) || level.contains(q);
+    }).toList();
   }
 
   @override
@@ -139,6 +162,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               Expanded(
                 flex: 3,
                 child: TextField(
+                  controller: _searchController,
+                  onSubmitted: (_) => _onSearch(),
                   decoration: InputDecoration(
                     hintText: 'Search for courses, skills, or topics...',
                     hintStyle: TextStyle(color: LMSTheme.mutedForeground, fontSize: 16),
@@ -157,7 +182,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               SizedBox(
                 height: 56,
                 child: FilledButton(
-                  onPressed: () {},
+                  onPressed: _onSearch,
                   style: FilledButton.styleFrom(
                     backgroundColor: LMSTheme.primaryColor,
                     foregroundColor: Colors.white,
@@ -175,17 +200,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildCoursesGrid(ThemeData theme) {
-    final courses = _store.enrolledCourses;
+    final courses = _filteredCourses;
     if (courses.isEmpty) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: EmptyStateWidget(
             icon: Icons.menu_book_outlined,
-            title: 'No courses yet',
-            subtitle: 'You have not enrolled in any courses.',
-            ctaLabel: 'Refresh',
-            onCtaPressed: () => _store.loadDashboard(widget.studentId),
+            title: _searchQuery.isEmpty ? 'No courses yet' : 'No matching courses',
+            subtitle: _searchQuery.isEmpty
+                ? 'You have not enrolled in any courses.'
+                : 'Try a different search term.',
+            ctaLabel: _searchQuery.isEmpty ? 'Refresh' : 'Clear search',
+            onCtaPressed: () {
+              if (_searchQuery.isNotEmpty) {
+                _searchController.clear();
+                setState(() => _searchQuery = '');
+              } else {
+                _store.loadDashboard(widget.studentId);
+              }
+            },
           ),
         ),
       );
@@ -290,14 +324,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSubjectsGrid(ThemeData theme) {
-    final courses = _store.enrolledCourses;
+    final courses = _filteredCourses;
     if (courses.isEmpty) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Center(
             child: Text(
-              'No subjects available',
+              _searchQuery.isEmpty ? 'No subjects available' : 'No matching subjects',
               style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey[600]),
             ),
           ),

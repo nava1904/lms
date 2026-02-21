@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../core/current_student_holder.dart';
 import '../sanity_client_helper.dart';
 import '../models/models.dart';
 import '../services/lms_sanity_service.dart';
@@ -27,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    CurrentStudentHolder.clear();
     _loadBanner();
   }
 
@@ -309,11 +311,13 @@ class _LoginScreenState extends State<LoginScreen> {
                   return null;
                 },
               ),
-            if (_selectedRole == 'student')
+            if (_selectedRole == 'student') ...[
               TextFormField(
                 controller: _rollNumberController,
                 decoration: InputDecoration(
                   labelText: 'Roll Number',
+                  hintText: 'Enter your roll number (e.g. ROLL011)',
+                  helperText: 'Students sign in with roll number only; no password required.',
                   prefixIcon: const Icon(Icons.badge_outlined, size: 20),
                   filled: true,
                   fillColor: Colors.white,
@@ -328,8 +332,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 ),
                 validator: (value) =>
-                    value?.isEmpty == true ? 'Roll Number is required' : null,
+                    (value?.trim() ?? '').isEmpty ? 'Roll Number is required' : null,
               ),
+            ],
             if (_selectedRole != 'student') ...[
               const SizedBox(height: 20),
               TextFormField(

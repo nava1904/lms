@@ -84,13 +84,13 @@ abstract class _AnalyticsStore with Store {
     });
   }
 
-  /// Topics with accuracy < 60% (subject/chapter combinations).
+  /// Topics with accuracy < 60% (subject/chapter or questionType fallback).
   @computed
   List<Map<String, dynamic>> get weakTopics {
     final byTopic = <String, List<bool>>{};
     for (final item in perQuestionBreakdown) {
-      final sub = (item['subjectName'] as String?) ?? 'Unknown';
-      final ch = (item['chapterName'] as String?) ?? 'Unknown';
+      final sub = (item['subjectName'] as String?) ?? (item['questionType'] as String?) ?? 'General';
+      final ch = (item['chapterName'] as String?) ?? 'General';
       final key = '$sub / $ch';
       final correct = item['isCorrect'] as bool? ?? false;
       byTopic.putIfAbsent(key, () => []).add(correct);

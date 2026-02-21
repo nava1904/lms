@@ -130,7 +130,7 @@ class _LmsShellState extends State<LmsShell> {
     }
     return const [
       _NavItem(Icons.dashboard, 'Dashboard', '/student-dashboard'),
-      _NavItem(Icons.menu_book, 'Courses', '/student-dashboard'),
+      _NavItem(Icons.menu_book, 'Courses', '/student-courses'),
       _NavItem(Icons.quiz, 'Tests', '/tests'),
       _NavItem(Icons.analytics, 'Analytics', '/analytics'),
     ];
@@ -141,7 +141,8 @@ class _LmsShellState extends State<LmsShell> {
     for (int i = 0; i < items.length; i++) {
       final p = items[i].path;
       if (loc == p || loc.startsWith('$p/')) return i;
-      if (p == '/student-dashboard' && loc.startsWith('/student-dashboard')) return i;
+      if (p == '/student-dashboard' && loc.startsWith('/student-dashboard') && !loc.startsWith('/student-courses')) return i;
+      if (p == '/student-courses' && loc == '/student-courses') return i;
     }
     return 0;
   }
@@ -159,6 +160,15 @@ class _LmsShellState extends State<LmsShell> {
         return;
       }
       // No student id: go to home so user can log in
+      context.go('/');
+      return;
+    }
+    if (isStudent && path == '/student-courses') {
+      final id = CurrentStudentHolder.studentId ?? '';
+      if (id.isNotEmpty) {
+        context.go('/student-courses');
+        return;
+      }
       context.go('/');
       return;
     }

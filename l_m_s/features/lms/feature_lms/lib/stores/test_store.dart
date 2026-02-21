@@ -91,6 +91,21 @@ abstract class _TestStore with Store {
     timeSpentPerQuestion[index] = seconds;
   }
 
+  /// Check if answer matches correctAnswer. Handles both option text and option index
+  /// (test window may store index "0","1" while Sanity stores option text).
+  bool _isAnswerCorrect(String? ans, Question q) {
+    if (ans == null || ans.isEmpty) return false;
+    final correct = q.correctAnswer;
+    if (correct == null || correct.isEmpty) return false;
+    if (ans == correct) return true;
+    final idx = int.tryParse(ans);
+    if (idx != null && q.options.isNotEmpty && idx >= 0 && idx < q.options.length) {
+      final optionText = q.options[idx];
+      return optionText == correct;
+    }
+    return false;
+  }
+
   @action
   Future<bool> submitTest(String studentId) async {
     if (currentAssessment == null || startedAt == null) return false;
@@ -102,7 +117,7 @@ abstract class _TestStore with Store {
     for (int i = 0; i < qs.length; i++) {
       total += qs[i].marks;
       final ans = answers[i];
-      if (ans != null && ans == qs[i].correctAnswer) score += qs[i].marks;
+      if (_isAnswerCorrect(ans, qs[i])) score += qs[i].marks;
     }
     final percentage = total > 0 ? (score / total) * 100.0 : 0.0;
     final passed = currentAssessment!.passingMarksPercent == null ||
@@ -112,7 +127,7 @@ abstract class _TestStore with Store {
     for (var i = 0; i < qs.length; i++) {
       final q = qs[i];
       final ans = answers[i];
-      final isCorrect = ans != null && ans == q.correctAnswer;
+      final isCorrect = _isAnswerCorrect(ans, q);
       final marksObtained = isCorrect ? q.marks : 0;
       answersPayload.add({
         'question': {'_type': 'reference', '_ref': q.id},

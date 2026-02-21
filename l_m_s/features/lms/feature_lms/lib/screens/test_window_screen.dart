@@ -25,6 +25,7 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
   int _secondsRemaining = 0;
   SanityClient? _client;
   DateTime? _questionStartTime;
+  bool _instructionsAccepted = false;
 
   List<dynamic> get _questions {
     final a = _store.currentAssessment;
@@ -44,10 +45,56 @@ class _TestWindowScreenState extends State<TestWindowScreen> {
       if (mounted && _store.currentAssessment != null) {
         final mins = _store.currentAssessment!.durationMinutes ?? 30;
         _secondsRemaining = mins * 60;
-        _startTimer();
         _questionStartTime = DateTime.now();
+        _showInstructionsDialog();
       }
     });
+  }
+
+  void _showInstructionsDialog() {
+    final a = _store.currentAssessment;
+    if (a == null) return;
+    final mins = a.durationMinutes ?? 30;
+    final totalMarks = a.totalMarks ?? a.questions.fold<int>(0, (s, q) => s + q.marks);
+    final passingPct = a.passingMarksPercent ?? 40;
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(a.title),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Duration: $mins minutes', style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text('Questions: ${a.questions.length}'),
+              Text('Total marks: $totalMarks'),
+              Text('Passing: $passingPct%'),
+              const SizedBox(height: 16),
+              const Text('Instructions:', style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              const Text('• Answer all questions. You can navigate between questions.'),
+              const Text('• Use "Mark for review" to flag questions you want to revisit.'),
+              const Text('• The timer starts when you click Start test.'),
+              const Text('• Submit before time runs out. Unanswered questions will not be scored.'),
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              setState(() => _instructionsAccepted = true);
+              _startTimer();
+            },
+            child: const Text('Start test'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

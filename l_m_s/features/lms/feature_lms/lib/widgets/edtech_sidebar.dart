@@ -80,6 +80,7 @@ class EdTechSidebar extends StatelessWidget {
                 icon: e.icon,
                 label: e.label,
                 isAdmin: isAdmin,
+                accentColor: e.accentColor,
                 onTap: () => _goTo(context, e.path),
               )).toList(),
             ),
@@ -111,10 +112,10 @@ class EdTechSidebar extends StatelessWidget {
       case SidebarRole.student:
         return [
           _NavItem(Icons.dashboard_outlined, 'Dashboard', baseStudent),
-          _NavItem(Icons.menu_book_outlined, 'My Courses', baseStudent),
+          _NavItem(Icons.menu_book_outlined, 'My Courses', '/student-courses', const Color(0xFF059669)),
           _NavItem(Icons.analytics_outlined, 'Analytics', '/analytics'),
           _NavItem(Icons.quiz_outlined, 'Tests', '/tests'),
-          _NavItem(Icons.settings_outlined, 'Settings', baseStudent),
+          _NavItem(Icons.settings_outlined, 'Settings', '/student-settings'),
           _NavItem(Icons.logout, 'Logout', '/logout'),
         ];
       case SidebarRole.teacher:
@@ -146,7 +147,9 @@ class EdTechSidebar extends StatelessWidget {
   bool _isActive(BuildContext context, String path) {
     if (path == '/logout') return false;
     final loc = GoRouterState.of(context).uri.path;
-    if (path.contains('student-dashboard') && loc.contains('student-dashboard')) return true;
+    if (path.contains('student-dashboard') && loc.contains('student-dashboard') && !loc.contains('student-courses')) return true;
+    if (path == '/student-courses' && loc == '/student-courses') return true;
+    if (path == '/student-settings' && loc == '/student-settings') return true;
     if (path == '/analytics' && loc == '/analytics') return true;
     if (path == '/tests' && loc.startsWith('/tests')) return true;
     if (path == '/teacher-dashboard' && loc == '/teacher-dashboard') return true;
@@ -191,6 +194,24 @@ class EdTechSidebar extends StatelessWidget {
       final id = CurrentStudentHolder.studentId ?? state.pathParameters['studentId'] ?? '';
       if (id.isNotEmpty) {
         context.go(path, extra: {'studentId': id});
+        return;
+      }
+      context.go('/');
+      return;
+    }
+    if (path == '/student-courses') {
+      final id = CurrentStudentHolder.studentId ?? '';
+      if (id.isNotEmpty) {
+        context.go('/student-courses');
+        return;
+      }
+      context.go('/');
+      return;
+    }
+    if (path == '/student-settings') {
+      final id = CurrentStudentHolder.studentId ?? '';
+      if (id.isNotEmpty) {
+        context.go('/student-settings');
         return;
       }
       context.go('/');
@@ -248,7 +269,8 @@ class _NavItem {
   final IconData icon;
   final String label;
   final String path;
-  _NavItem(this.icon, this.label, this.path);
+  final Color? accentColor;
+  _NavItem(this.icon, this.label, this.path, [this.accentColor]);
 }
 
 class _NavTile extends StatelessWidget {
@@ -256,6 +278,7 @@ class _NavTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isAdmin;
+  final Color? accentColor;
   final VoidCallback onTap;
 
   const _NavTile({
@@ -263,16 +286,18 @@ class _NavTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.isAdmin,
+    this.accentColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final activeColor = accentColor ?? LMSTheme.primaryColor;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Material(
         color: isActive
-            ? (isAdmin ? LMSTheme.primaryColor : LMSTheme.primaryColor)
+            ? (isAdmin ? LMSTheme.primaryColor : activeColor)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         child: InkWell(

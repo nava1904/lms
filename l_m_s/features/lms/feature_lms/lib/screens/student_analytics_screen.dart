@@ -131,9 +131,9 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
                 const SizedBox(height: 24),
                 _buildDonutCard(),
                 const SizedBox(height: 24),
-                _buildTimePerQuestionCard(),
-                const SizedBox(height: 24),
                 _buildScoreTrendCard(),
+                const SizedBox(height: 24),
+                _buildTimePerQuestionCard(),
                 const SizedBox(height: 24),
                 _buildPerQuestionBreakdownCard(),
                 const SizedBox(height: 24),
@@ -152,8 +152,8 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
   Widget _buildPerQuestionBreakdownCard() {
     return Observer(
       builder: (_) {
-        final breakdown = _store.perQuestionBreakdown;
-        if (breakdown.isEmpty) {
+        final attempts = _store.testAttempts;
+        if (attempts.isEmpty) {
           return Card(
             child: Padding(
               padding: const EdgeInsets.all(24),
@@ -173,26 +173,38 @@ class _StudentAnalyticsScreenState extends State<StudentAnalyticsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Per-question breakdown', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text('Per-test breakdown', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 16),
-                ...breakdown.take(20).map((item) {
-                  final correct = item['isCorrect'] as bool? ?? false;
-                  final marks = item['marksObtained'] as int? ?? 0;
-                  final idx = (item['index'] as int?) ?? 0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? LMSTheme.successColor : LMSTheme.errorColor, size: 20),
-                        const SizedBox(width: 8),
-                        Text('Q${idx + 1}', style: const TextStyle(fontWeight: FontWeight.w500)),
-                        const SizedBox(width: 8),
-                        Text('${marks} marks', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      ],
-                    ),
+                ...attempts.map((attempt) {
+                  final answers = attempt.answers ?? [];
+                  if (answers.isEmpty) return const SizedBox.shrink();
+                  final title = attempt.testTitle ?? attempt.testId;
+                  final date = attempt.submittedAt != null
+                      ? '${attempt.submittedAt!.day}/${attempt.submittedAt!.month}/${attempt.submittedAt!.year}'
+                      : '';
+                  return ExpansionTile(
+                    initiallyExpanded: attempts.indexOf(attempt) == 0,
+                    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    subtitle: Text(date, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                    children: answers.asMap().entries.map((e) {
+                      final a = e.value;
+                      final correct = a['isCorrect'] == true || a['correct'] == true;
+                      final marks = (a['marksObtained'] as num?)?.toInt() ?? 0;
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 16, bottom: 8),
+                        child: Row(
+                          children: [
+                            Icon(correct ? Icons.check_circle : Icons.cancel, color: correct ? LMSTheme.successColor : LMSTheme.errorColor, size: 18),
+                            const SizedBox(width: 8),
+                            Text('Q${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                            const SizedBox(width: 8),
+                            Text('$marks marks', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                          ],
+                        ),
+                      );
+                    }).toList(),
                   );
                 }),
-                if (breakdown.length > 20) Text('... and ${breakdown.length - 20} more', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
               ],
             ),
           ),

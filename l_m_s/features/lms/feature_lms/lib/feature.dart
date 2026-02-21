@@ -24,6 +24,8 @@ import 'screens/teacher_student_detail_screen.dart';
 import 'screens/teacher_analytics_screen.dart';
 import 'screens/teacher_content_studio_screen.dart';
 import 'screens/teacher_worksheets_screen.dart';
+import 'screens/student_courses_screen.dart';
+import 'screens/student_settings_screen.dart';
 import 'screens/teacher_settings_screen.dart';
 import 'screens/test_window_screen.dart';
 import 'screens/tests_screen.dart';
@@ -40,12 +42,26 @@ final feature = FeatureDescriptor(
     return [
       GoRoute(
         path: '/',
+        redirect: (context, state) {
+          final studentId = CurrentStudentHolder.studentId;
+          if (studentId != null && studentId.isNotEmpty) {
+            return '/student-dashboard/$studentId';
+          }
+          return null;
+        },
         pageBuilder: (context, state) => const NoTransitionPage(
           child: EdTechHomePage(),
         ),
       ),
       GoRoute(
         path: '/login',
+        redirect: (context, state) {
+          final studentId = CurrentStudentHolder.studentId;
+          if (studentId != null && studentId.isNotEmpty) {
+            return '/student-dashboard/$studentId';
+          }
+          return null;
+        },
         pageBuilder: (context, state) => const NoTransitionPage(
           child: LoginScreen(),
         ),
@@ -67,8 +83,8 @@ final feature = FeatureDescriptor(
             pageBuilder: (context, state) {
               final studentId = state.pathParameters['studentId'] ?? '';
               final extra = state.extra as Map<String, dynamic>?;
-              final studentName = extra?['studentName'] as String? ?? 'Student';
-              final rollNumber = extra?['rollNumber'] as String? ?? '';
+              final studentName = extra?['studentName'] as String? ?? CurrentStudentHolder.studentName ?? 'Student';
+              final rollNumber = extra?['rollNumber'] as String? ?? CurrentStudentHolder.rollNumber ?? '';
               if (studentId.isNotEmpty) {
                 CurrentStudentHolder.set(studentId, name: studentName, roll: rollNumber);
               }
@@ -83,6 +99,24 @@ final feature = FeatureDescriptor(
             pageBuilder: (context, state) => const NoTransitionPage(
               child: EdTechHomePage(),
             ),
+          ),
+          GoRoute(
+            path: '/student-courses',
+            pageBuilder: (context, state) {
+              final studentId = CurrentStudentHolder.studentId ?? '';
+              return NoTransitionPage(
+                child: StudentCoursesScreen(studentId: studentId),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/student-settings',
+            pageBuilder: (context, state) {
+              final studentId = CurrentStudentHolder.studentId ?? '';
+              return NoTransitionPage(
+                child: StudentSettingsScreen(studentId: studentId),
+              );
+            },
           ),
           GoRoute(
             path: '/analytics',
