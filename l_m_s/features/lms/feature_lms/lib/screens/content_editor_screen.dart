@@ -1,8 +1,12 @@
-import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
+
 import '../sanity_client_helper.dart';
+import '../theme/lms_theme.dart';
 
 class ContentEditorScreen extends StatefulWidget {
   final String chapterId;
@@ -26,6 +30,7 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
   final _videoUrlController = TextEditingController();
   List<dynamic> _contents = [];
   bool _loading = true;
+  String? _videoUrlError;
 
   @override
   void initState() {
@@ -34,17 +39,53 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
   }
 
   Future<void> _loadContents() async {
+    if (widget.chapterId.isEmpty) {
+      setState(() => _loading = false);
+      return;
+    }
     try {
       final client = createLmsClient();
-      final res = await client.fetch('''*[_type == "concept"]{_id, title, body, videoUrl}''');
+      final res = await client.fetch(
+        r'''*[_type == "concept" && chapter._ref == $chapterId]{ _id, title, content, videoUrl }''',
+        params: {'chapterId': widget.chapterId},
+      );
+      final result = res is dynamic && res.result != null ? res.result : res;
       setState(() {
-        _contents = res.result as List<dynamic>? ?? [];
+        _contents = result is List ? List.from(result) : [];
         _loading = false;
       });
     } catch (e) {
-      print('Error loading contents: $e');
+      debugPrint('Error loading contents: $e');
       setState(() { _loading = false; });
     }
+  }
+
+  /// Generate URL-safe slug from title (required by concept schema).
+  static String _slugFromTitle(String title) {
+    if (title.isEmpty) return 'untitled';
+    final slug = title
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s-]'), '')
+        .replaceAll(RegExp(r'[\s_]+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .trim();
+    return slug.isEmpty ? 'untitled' : slug;
+  }
+
+  /// Extract plain text from Sanity portable text (content array of blocks).
+  String _contentToText(dynamic content) {
+    if (content == null) return '';
+    if (content is String) return content;
+    if (content is! List || content.isEmpty) return '';
+    final first = content.first;
+    if (first is! Map) return '';
+    final children = first['children'];
+    if (children is! List) return '';
+    final buf = StringBuffer();
+    for (final c in children) {
+      if (c is Map && c['text'] != null) buf.write(c['text']);
+    }
+    return buf.toString();
   }
 
   Future<void> _createContent() async {
@@ -54,6 +95,15 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
       );
       return;
     }
+    final videoUrl = _videoUrlController.text.trim();
+    if (videoUrl.isNotEmpty) {
+      final uri = Uri.tryParse(videoUrl);
+      if (uri == null || !uri.hasScheme) {
+        setState(() => _videoUrlError = 'Enter a valid URL (e.g. https://...)');
+        return;
+      }
+    }
+    setState(() => _videoUrlError = null);
 
     if (widget.chapterId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -65,7 +115,7 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
     try {
       const projectId = 'w18438cu';
       const dataset = 'production';
-      final token = dotenv.env['SANITY_TOKEN'];
+      final token = dotenv.env['SANITY_API_TOKEN'] ?? dotenv.env['SANITY_TOKEN'];
       
       if (token == null || token.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,13 +126,27 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
 
       final url = Uri.https('$projectId.api.sanity.io', '/v2023-05-30/data/mutate/$dataset');
       
+      final title = _contentTitleController.text;
+      final slug = _slugFromTitle(title);
+      final text = _contentBodyController.text;
+      final content = text.isEmpty
+          ? <Map<String, dynamic>>[]
+          : [
+              {
+                '_type': 'block',
+                'children': [
+                  {'_type': 'span', 'text': text, 'marks': []}
+                ],
+              }
+            ];
       final body = jsonEncode({
         'mutations': [
           {
             'create': {
               '_type': 'concept',
-              'title': _contentTitleController.text,
-              'body': _contentBodyController.text,
+              'title': title,
+              'slug': {'_type': 'slug', 'current': slug},
+              'content': content,
               if (_videoUrlController.text.isNotEmpty) 'videoUrl': _videoUrlController.text,
               'chapter': {'_type': 'reference', '_ref': widget.chapterId},
             }
@@ -96,14 +160,10 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
       };
 
       final response = await http.post(url, body: body, headers: headers);
-      
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        print('Full response: $data');
-        
+        debugPrint('Concept create response: ${response.statusCode}');
         if (data['results'] != null && data['results'].isNotEmpty) {
           final result = data['results'][0];
           final newContent = result['document'] ?? result;
@@ -116,7 +176,10 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
             _contentBodyController.clear();
             _videoUrlController.clear();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Content added successfully!')),
+              SnackBar(
+                content: const Text('Content added successfully!'),
+                backgroundColor: LMSTheme.successColor,
+              ),
             );
             // Reload contents from Sanity
             _loadContents();
@@ -134,10 +197,77 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
         );
       }
     } catch (e) {
-      print('Exception: $e');
+      debugPrint('Exception: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e')),
       );
+    }
+  }
+
+  Future<void> _deleteContent(Map<String, dynamic> content) async {
+    final id = content['_id'] as String?;
+    if (id == null || id.isEmpty) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete content?'),
+        content: Text(
+          'Remove "${content['title'] ?? 'Untitled'}"? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      final token = dotenv.env['SANITY_API_TOKEN'] ?? dotenv.env['SANITY_TOKEN'];
+      if (token == null || token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sanity token not configured')),
+        );
+        return;
+      }
+      const projectId = 'w18438cu';
+      const dataset = 'production';
+      final url = Uri.https(
+        '$projectId.api.sanity.io',
+        '/v2023-05-30/data/mutate/$dataset',
+      );
+      final body = jsonEncode({
+        'mutations': [
+          {'delete': {'id': id}},
+        ],
+      });
+      final response = await http.post(
+        url,
+        body: body,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      if (mounted) {
+        if (response.statusCode == 200) {
+          setState(() => _contents.removeWhere((c) => c is Map && c['_id'] == id));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Content deleted')),
+          );
+          _loadContents();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Delete failed: ${response.statusCode}')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Delete error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
     }
   }
 
@@ -208,12 +338,15 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
                           maxLines: 5,
                         ),
                         const SizedBox(height: 12),
-                        TextField(
+                        TextFormField(
                           controller: _videoUrlController,
                           decoration: InputDecoration(
                             hintText: 'Video URL (YouTube, Vimeo, etc.)',
                             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                            errorText: _videoUrlError,
                           ),
+                          keyboardType: TextInputType.url,
+                          onChanged: (_) => setState(() => _videoUrlError = null),
                         ),
                         const SizedBox(height: 16),
                         Row(
@@ -275,16 +408,16 @@ class _ContentEditorScreenState extends State<ContentEditorScreen> {
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete, size: 18),
-                                  onPressed: () {
-                                    // TODO: Delete content
-                                  },
+                                  onPressed: () => _deleteContent(
+                                    content is Map ? Map<String, dynamic>.from(content) : <String, dynamic>{},
+                                  ),
                                 ),
                               ],
                             ),
-                            if (content is Map && content['body'] != null) ...[
+                            if (content is Map) ...[
                               const SizedBox(height: 8),
                               Text(
-                                content['body'],
+                                _contentToText(content['content']),
                                 maxLines: 3,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.bodySmall,

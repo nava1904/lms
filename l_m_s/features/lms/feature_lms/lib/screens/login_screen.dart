@@ -1,13 +1,10 @@
-import 'dart:convert';
-import 'dart:math';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:go_router/go_router.dart';
-import 'package:vyuh_core/vyuh_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../sanity_client_helper.dart';
-import 'dashboard_screen.dart';
+import '../models/models.dart';
+import '../services/lms_sanity_service.dart';
+import '../theme/lms_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,425 +13,391 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  // Login fields
-  final _loginFormKey = GlobalKey<FormState>();
-  String _loginName = '';
-  String _loginRollNumber = '';
-  String _loginRole = 'student'; // student or teacher
-  bool _loggingIn = false;
-  // Enroll fields
-  final _enrollFormKey = GlobalKey<FormState>();
-  String _enrollName = '';
-  String? _enrollClass;
-  String? _enrollCourseId;
-  String _enrollRole = 'student'; // student or teacher
-  bool _enrolling = false;
-  String? _enrollResult;
-  // Teacher fields
-  final _teacherLoginFormKey = GlobalKey<FormState>();
-  String _teacherLoginEmail = '';
-  String _teacherLoginPassword = '';
-  bool _teacherLoggingIn = false;
-  final _teacherEnrollFormKey = GlobalKey<FormState>();
-  String _teacherName = '';
-  String _teacherEmail = '';
-  String _teacherEmployeeId = '';
-  bool _teacherEnrolling = false;
-  String? _teacherEnrollResult;
-  // Data
-  List<dynamic> _classes = ['JEE', 'NEET', 'Class 12', 'Class 11'];
-  List<dynamic> _courses = [];
-  String? _error;
-  bool _loading = true;
-  Map<String, dynamic>? _adBanner;
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _rollNumberController = TextEditingController();
+  String _selectedRole = 'student';
+  bool _isLoading = false;
+  String? _errorMessage;
+  AdBanner? _adBanner;
+  final _lmsService = LmsSanityService();
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _loadData();
+    _loadBanner();
   }
 
-  Future<void> _loadData() async {
-    setState(() { _loading = true; _error = null; });
-    try {
-      final client = createLmsClient();
-      final courseRes = await client.fetch(r'''*[_type == "course"]{_id, title}''');
-      final adRes = await client.fetch(LmsQueries.adBanner);
-      setState(() {
-        _courses = courseRes.result as List<dynamic>? ?? [];
-        _adBanner = (adRes.result as List<dynamic>?)?.first as Map<String, dynamic>?;
-        _loading = false;
-      });
-    } catch (e) {
-      setState(() { _error = e.toString(); _loading = false; });
-    }
-  }
-
-  Future<String> _createStudent(String name, String classLevel, String? courseId, List<String> subjectIds) async {
-    const projectId = 'w18438cu';
-    const dataset = 'production';
-    final token = dotenv.env['SANITY_TOKEN'] ?? '';
-    final rollNumber = (Random().nextInt(9000) + 1000).toString();
-    final Map<String, dynamic> studentData = {
-      '_type': 'student',
-      'name': name,
-      'rollNumber': rollNumber,
-      'classLevel': classLevel,
-      if (courseId != null) 'course': {'_type': 'reference', '_ref': courseId},
-      if (subjectIds.isNotEmpty) 'enrolledSubjects': subjectIds.map((id) => {'_type': 'reference', '_ref': id}).toList(),
-    };
-    final url = Uri.https('$projectId.api.sanity.io', '/v2023-05-30/data/mutate/$dataset');
-    final body = jsonEncode({
-      'mutations': [
-        {'create': studentData}
-      ]
-    });
-    final headers = {
-      'Content-Type': 'application/json',
-      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
-    final response = await http.post(url, body: body, headers: headers);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final studentId = data['results'][0]['id'] as String;
-      return '$rollNumber|$studentId';
-    } else {
-      throw Exception('Failed to create student: ${response.body}');
-    }
-  }
-
-  Future<void> _onEnroll() async {
-    if (!(_enrollFormKey.currentState?.validate() ?? false)) return;
-    _enrollFormKey.currentState?.save();
-    setState(() { _enrolling = true; _enrollResult = null; });
-    try {
-      final result = await _createStudent(_enrollName, _enrollClass!, _enrollCourseId, []);
-      final parts = result.split('|');
-      final rollNumber = parts[0];
-      final studentId = parts[1];
-      setState(() {
-        _enrollResult = 'Enrolled! Your roll number is $rollNumber. Please use it to login.';
-      });
-      // Auto-login after enrollment
-      await Future.delayed(const Duration(seconds: 2));
-      if (mounted) {
-        GoRouter.of(context).go('/student-dashboard', extra: {
-          'studentName': _enrollName,
-          'rollNumber': rollNumber,
-          'studentId': studentId,
-        });
-      }
-    } catch (e) {
-      setState(() { _enrollResult = 'Enroll failed: $e'; });
-    } finally {
-      setState(() { _enrolling = false; });
-    }
-  }
-
-  Future<void> _onLogin() async {
-    if (!(_loginFormKey.currentState?.validate() ?? false)) return;
-    _loginFormKey.currentState?.save();
-    setState(() { _loggingIn = true; });
-    try {
-      final client = createLmsClient();
-      final res = await client.fetch('''*[_type == "student" && name == "$_loginName" && rollNumber == "$_loginRollNumber"][0]{_id, name, rollNumber}''');
-      final student = res.result;
-      if (student != null && student['_id'] != null) {
-        // Route to student dashboard
-        GoRouter.of(context).go('/student-dashboard', extra: {
-          'studentName': student['name'],
-          'rollNumber': student['rollNumber'],
-          'studentId': student['_id'],
-        });
-      } else {
-        setState(() { _error = 'No student found with that name and roll number.'; });
-      }
-    } catch (e) {
-      setState(() { _error = 'Login failed: $e'; });
-    } finally {
-      setState(() { _loggingIn = false; });
-    }
-  }
-
-  Future<String> _createTeacher(String name, String email, String employeeId) async {
-    const projectId = 'w18438cu';
-    const dataset = 'production';
-    final token = dotenv.env['SANITY_TOKEN'] ?? '';
-    final url = Uri.https('$projectId.api.sanity.io', '/v2023-05-30/data/mutate/$dataset');
-    final Map<String, dynamic> teacherData = {
-      '_type': 'teacher',
-      'name': name,
-      'email': email,
-      'employeeId': employeeId,
-    };
-    final body = jsonEncode({
-      'mutations': [
-        {'create': teacherData}
-      ]
-    });
-    final headers = {
-      'Content-Type': 'application/json',
-      if (token.isNotEmpty) 'Authorization': 'Bearer $token',
-    };
-    final response = await http.post(url, body: body, headers: headers);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final teacherId = data['results'][0]['id'] as String;
-      return teacherId;
-    } else {
-      throw Exception('Failed to create teacher: ${response.body}');
-    }
-  }
-
-  Future<void> _onTeacherEnroll() async {
-    if (!(_teacherEnrollFormKey.currentState?.validate() ?? false)) return;
-    _teacherEnrollFormKey.currentState?.save();
-    setState(() { _teacherEnrolling = true; _teacherEnrollResult = null; });
-    try {
-      final teacherId = await _createTeacher(_teacherName, _teacherEmail, _teacherEmployeeId);
-      setState(() {
-        _teacherEnrollResult = 'Teacher account created! You can now login with your email.';
-      });
-    } catch (e) {
-      setState(() { _teacherEnrollResult = 'Enrollment failed: $e'; });
-    } finally {
-      setState(() { _teacherEnrolling = false; });
-    }
-  }
-
-  Future<void> _onTeacherLogin() async {
-    if (!(_teacherLoginFormKey.currentState?.validate() ?? false)) return;
-    _teacherLoginFormKey.currentState?.save();
-    setState(() { _teacherLoggingIn = true; });
-    try {
-      final client = createLmsClient();
-      final res = await client.fetch('''*[_type == "teacher" && email == "$_teacherLoginEmail"][0]{_id, name, email}''');
-      final teacher = res.result;
-      if (teacher != null && teacher['_id'] != null) {
-        // Route to teacher dashboard
-        GoRouter.of(context).go('/teacher-dashboard', extra: {
-          'teacherName': teacher['name'],
-          'teacherId': teacher['_id'],
-        });
-      } else {
-        setState(() { _error = 'No teacher found with that email.'; });
-      }
-    } catch (e) {
-      setState(() { _error = 'Login failed: $e'; });
-    } finally {
-      setState(() { _teacherLoggingIn = false; });
-    }
+  Future<void> _loadBanner() async {
+    final banner = await _lmsService.getActiveAdBanner();
+    if (mounted) setState(() => _adBanner = banner);
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _rollNumberController.dispose();
     super.dispose();
   }
 
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final query = _buildQuery();
+      final params = _buildQueryParams();
+
+      final response = await SanityClientHelper.client.fetch(query, params: params.map((k, v) => MapEntry(k, v.toString())));
+      dynamic raw = response.result;
+      if (raw is List && raw.isNotEmpty) raw = raw.first;
+      final result = raw is Map ? Map<String, dynamic>.from(raw) : null;
+
+      if (result != null) {
+        _navigateToDashboard(result);
+      } else {
+        setState(() => _errorMessage = 'Invalid credentials or user not found.');
+      }
+    } catch (e) {
+      setState(() => _errorMessage = 'Error: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  String _buildQuery() {
+    switch (_selectedRole) {
+      case 'student':
+        return r'*[_type == "student" && rollNumber == $rollNumber][0]';
+      case 'teacher':
+        return r'*[_type == "teacher" && email == $email][0]';
+      case 'admin':
+        return r'*[_type == "admin" && email == $email][0]';
+      default:
+        throw Exception('Invalid role selected');
+    }
+  }
+
+  Map<String, dynamic> _buildQueryParams() {
+    switch (_selectedRole) {
+      case 'student':
+        return {'rollNumber': _rollNumberController.text.trim()};
+      case 'teacher':
+      case 'admin':
+        return {'email': _emailController.text.trim()};
+      default:
+        throw Exception('Invalid role selected');
+    }
+  }
+
+  void _navigateToDashboard(Map<String, dynamic> user) {
+    switch (_selectedRole) {
+      case 'student': {
+        final id = user['_id'] as String? ?? '';
+        context.go('/student-dashboard/$id', extra: {
+          'studentName': user['name'] ?? 'Student',
+          'rollNumber': user['rollNumber'] ?? '',
+        });
+        break;
+      }
+      case 'teacher':
+        context.go('/teacher-dashboard', extra: {
+          'teacherName': user['name'] ?? 'Teacher',
+          'teacherId': user['_id'] ?? '',
+        });
+        break;
+      case 'admin':
+        context.go('/admin-dashboard', extra: {
+          'adminName': user['name'] ?? 'Admin',
+          'adminId': user['_id'] ?? '',
+          'adminRole': user['role'] ?? 'admin',
+        });
+        break;
+    }
+  }
+
+  static const Color _gradientStart = Color(0xFFEFF6FF);
+  static const Color _border = Color(0xFFE2E8F0);
+  static const Color _mutedForeground = Color(0xFF64748B);
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('LMS Login / Enroll'),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Student Login'),
-            Tab(text: 'Student Enroll'),
-            Tab(text: 'Teacher Login'),
-            Tab(text: 'Teacher Enroll'),
-          ],
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_gradientStart, Colors.white],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildHeader(context),
+                    if (_adBanner != null) ...[
+                      const SizedBox(height: 24),
+                      _buildBanner(context),
+                    ],
+                    const SizedBox(height: 32),
+                    _buildLoginCard(context),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                // Tab 0: Student Login
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Form(
-                    key: _loginFormKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Name'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your name' : null,
-                          onSaved: (v) => _loginName = v ?? '',
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Roll Number'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your roll number' : null,
-                          onSaved: (v) => _loginRollNumber = v ?? '',
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _loggingIn ? null : _onLogin,
-                          child: _loggingIn ? const CircularProgressIndicator() : const Text('Login'),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 16),
-                          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                // Tab 1: Student Enroll
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Form(
-                    key: _enrollFormKey,
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Name'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your name' : null,
-                          onSaved: (v) => _enrollName = v ?? '',
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(labelText: 'Class'),
-                          value: _enrollClass,
-                          items: _classes.map((c) => DropdownMenuItem<String>(value: c, child: Text(c))).toList(),
-                          onChanged: (v) => setState(() => _enrollClass = v),
-                          validator: (v) => v == null ? 'Select class' : null,
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(labelText: 'Course'),
-                          value: _enrollCourseId,
-                          items: _courses.map((c) => DropdownMenuItem<String>(value: c['_id'] as String, child: Text(c['title'] as String))).toList(),
-                          onChanged: (v) => setState(() => _enrollCourseId = v),
-                          validator: (v) => v == null ? 'Select course' : null,
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _enrolling ? null : _onEnroll,
-                          child: _enrolling ? const CircularProgressIndicator() : const Text('Enroll'),
-                        ),
-                        if (_enrollResult != null) ...[
-                          const SizedBox(height: 16),
-                          Text(_enrollResult!, style: TextStyle(color: theme.colorScheme.primary)),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                // Tab 2: Teacher Login
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Form(
-                    key: _teacherLoginFormKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Email'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your email' : null,
-                          onSaved: (v) => _teacherLoginEmail = v ?? '',
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _teacherLoggingIn ? null : _onTeacherLogin,
-                          child: _teacherLoggingIn ? const CircularProgressIndicator() : const Text('Login'),
-                        ),
-                        if (_error != null) ...[
-                          const SizedBox(height: 16),
-                          Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                // Tab 3: Teacher Enroll
-                Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Form(
-                    key: _teacherEnrollFormKey,
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Name'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your name' : null,
-                          onSaved: (v) => _teacherName = v ?? '',
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Email'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your email' : null,
-                          onSaved: (v) => _teacherEmail = v ?? '',
-                          keyboardType: TextInputType.emailAddress,
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          decoration: const InputDecoration(labelText: 'Employee ID'),
-                          validator: (v) => v == null || v.isEmpty ? 'Enter your employee ID' : null,
-                          onSaved: (v) => _teacherEmployeeId = v ?? '',
-                        ),
-                        const SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _teacherEnrolling ? null : _onTeacherEnroll,
-                          child: _teacherEnrolling ? const CircularProgressIndicator() : const Text('Enroll'),
-                        ),
-                        if (_teacherEnrollResult != null) ...[
-                          const SizedBox(height: 16),
-                          Text(_teacherEnrollResult!, style: TextStyle(color: theme.colorScheme.primary)),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-      bottomNavigationBar: _adBanner != null
-          ? Padding(
-              padding: const EdgeInsets.all(8),
-              child: _AdBannerWidget(adBanner: _adBanner!),
-            )
-          : null,
     );
   }
-}
 
-class _AdBannerWidget extends StatelessWidget {
-  final Map<String, dynamic> adBanner;
-  const _AdBannerWidget({required this.adBanner});
+  Widget _buildHeader(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: LMSTheme.primaryColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: LMSTheme.primaryColor.withValues(alpha: 0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: const Icon(Icons.menu_book_rounded, size: 36, color: Colors.white),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'LearnHub',
+          style: GoogleFonts.outfit(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: LMSTheme.onSurfaceColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Sign in to your account',
+          style: GoogleFonts.inter(
+            fontSize: 16,
+            color: _mutedForeground,
+          ),
+        ),
+      ],
+    );
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final imageUrl = adBanner['image']?['asset']?['_ref'] ?? '';
-    final headline = adBanner['headline'] ?? '';
-    final callToAction = adBanner['callToAction'] ?? '';
-    return Card(
-      color: theme.colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+  Widget _buildBanner(BuildContext context) {
+    if (_adBanner == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: LMSTheme.primaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: LMSTheme.primaryColor.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_adBanner!.headline != null && _adBanner!.headline!.isNotEmpty)
+            Text(
+              _adBanner!.headline!,
+              style: GoogleFonts.outfit(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: LMSTheme.primaryColor,
+              ),
+            ),
+          if (_adBanner!.callToAction != null && _adBanner!.callToAction!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              _adBanner!.callToAction!,
+              style: GoogleFonts.inter(fontSize: 13, color: _mutedForeground),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoginCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _border),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 40,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Form(
+        key: _formKey,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (imageUrl.isNotEmpty)
-              Image.network('https://cdn.sanity.io/images/YOUR_PROJECT_ID/production/$imageUrl', height: 120, fit: BoxFit.cover),
-            if (headline.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(headline, style: theme.textTheme.titleMedium),
+            DropdownButtonFormField<String>(
+              value: _selectedRole,
+              items: const [
+                DropdownMenuItem(value: 'student', child: Text('Student')),
+                DropdownMenuItem(value: 'teacher', child: Text('Teacher')),
+                DropdownMenuItem(value: 'admin', child: Text('Admin')),
+              ],
+              onChanged: (value) => setState(() => _selectedRole = value!),
+              decoration: InputDecoration(
+                labelText: 'Role',
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: _border),
+                ),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (_selectedRole != 'student')
+              TextFormField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) {
+                  if (value?.isEmpty == true) return 'Email is required';
+                  if (!value!.contains('@')) return 'Invalid email';
+                  return null;
+                },
+              ),
+            if (_selectedRole == 'student')
+              TextFormField(
+                controller: _rollNumberController,
+                decoration: InputDecoration(
+                  labelText: 'Roll Number',
+                  prefixIcon: const Icon(Icons.badge_outlined, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                validator: (value) =>
+                    value?.isEmpty == true ? 'Roll Number is required' : null,
+              ),
+            if (_selectedRole != 'student') ...[
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(color: _border),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+                obscureText: true,
+                validator: (value) {
+                  if (value?.isEmpty == true) return 'Password is required';
+                  if (value!.length < 6) return 'Password must be at least 6 characters';
+                  return null;
+                },
+              ),
             ],
-            if (callToAction.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(callToAction, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.primary)),
+            const SizedBox(height: 20),
+            if (_errorMessage != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage!,
+                style: GoogleFonts.inter(
+                  fontSize: 13,
+                  color: LMSTheme.errorColor,
+                ),
+              ),
             ],
+            const SizedBox(height: 24),
+            SizedBox(
+              height: 48,
+              child: FilledButton(
+                onPressed: _isLoading ? null : _handleSubmit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: LMSTheme.primaryColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'Sign in',
+                        style: GoogleFonts.inter(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
           ],
         ),
       ),

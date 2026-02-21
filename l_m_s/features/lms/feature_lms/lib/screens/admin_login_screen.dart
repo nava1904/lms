@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+
 import '../sanity_client_helper.dart';
 
+/// Admin login: validates email against Sanity admin document (isActive) before allowing access.
+/// Admin schema has no password field; add one in Sanity and verify here if needed.
 class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
 
@@ -10,108 +13,116 @@ class AdminLoginScreen extends StatefulWidget {
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  bool _loading = false;
-
-  Future<void> _loginAdmin() async {
-    if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email')),
-      );
-      return;
-    }
-
-    setState(() => _loading = true);
-    try {
-      final client = createLmsClient();
-      final res = await client.fetch(
-        '''*[_type == "admin" && email == "${_emailController.text}"]{_id, name, email, role}[0]'''
-      );
-      
-      setState(() => _loading = false);
-
-      if (res.result != null) {
-        final admin = res.result as Map<String, dynamic>;
-        if (mounted) {
-          context.go('/admin-dashboard', extra: {
-            'adminId': admin['_id'],
-            'adminName': admin['name'],
-            'adminEmail': admin['email'],
-            'adminRole': admin['role'],
-          });
-        }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Admin not found')),
-        );
-      }
-    } catch (e) {
-      setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final email = _emailController.text.trim();
+      final client = createLmsClient();
+      const query = r'*[_type == "admin" && email == $email][0]{ _id, name, email, role, isActive }';
+      final response = await client.fetch(query, params: {'email': email});
+      final raw = response.result;
+      final admin = raw is Map ? Map<String, dynamic>.from(raw as Map) : null;
+
+      if (!mounted) return;
+      if (admin == null || admin.isEmpty) {
+        setState(() {
+          _errorMessage = 'No admin found with this email.';
+          _isLoading = false;
+        });
+        return;
+      }
+      final isActive = admin['isActive'];
+      if (isActive == false) {
+        setState(() {
+          _errorMessage = 'This account is inactive.';
+          _isLoading = false;
+        });
+        return;
+      }
+      setState(() => _isLoading = false);
+      context.go('/admin-dashboard', extra: {
+        'adminId': admin['_id'] ?? '',
+        'adminName': admin['name'] ?? 'Admin',
+        'adminEmail': admin['email'] ?? email,
+        'adminRole': admin['role'] ?? 'admin',
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Error: $e';
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      appBar: AppBar(title: const Text('Admin Login')),
       body: Center(
-        child: SingleChildScrollView(
-          child: Card(
-            elevation: 0,
-            color: Colors.white,
-            margin: const EdgeInsets.all(24),
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.admin_panel_settings, size: 64, color: theme.colorScheme.primary),
-                  const SizedBox(height: 24),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _emailController,
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  validator: (v) {
+                    if (v == null || v.trim().isEmpty) return 'Enter email';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Password'),
+                  // Admin schema has no password yet; when added, verify here
+                ),
+                if (_errorMessage != null) ...[
+                  const SizedBox(height: 16),
                   Text(
-                    'Admin Portal',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Management Dashboard',
-                    style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 32),
-                  TextField(
-                    controller: _emailController,
-                    decoration: InputDecoration(
-                      hintText: 'Admin Email',
-                      prefixIcon: const Icon(Icons.email),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    enabled: !_loading,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    onPressed: _loading ? null : _loginAdmin,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                    child: _loading
-                        ? const SizedBox(
-                            height: 24,
-                            width: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Login'),
+                    _errorMessage!,
+                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    textAlign: TextAlign.center,
                   ),
                 ],
-              ),
+                const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: _isLoading ? null : _handleLogin,
+                  child: _isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Login'),
+                ),
+              ],
             ),
           ),
         ),

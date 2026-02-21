@@ -27,3 +27,19 @@
 
 # Dotenv and similar local-only files
 *.local
+
+# Environment and secrets (never commit)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Vercel
+.vercel/
+**/.vercel/
+
+# Build outputs
+build/
+dist/

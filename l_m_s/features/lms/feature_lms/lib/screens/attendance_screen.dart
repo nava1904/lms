@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
-import '../sanity_client_helper.dart';
+import 'package:flutter_mobx/flutter_mobx.dart';
+import '../models/attendance.dart';
+import '../stores/attendance_store.dart';
+import '../theme/lms_theme.dart';
 
+/// Attendance: select batch, list students with Present/Absent/Late toggles.
+/// Saves to Sanity via AttendanceStore (mutations).
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({super.key});
 
@@ -9,159 +14,210 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  List<dynamic>? _records;
-  String? _error;
-  bool _loading = true;
+  final AttendanceStore _store = AttendanceStore();
+  String? _selectedBatchId;
 
   @override
   void initState() {
     super.initState();
-    _loadAttendance();
+    _store.loadBatches();
   }
 
-  Future<void> _loadAttendance() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final client = createLmsClient();
-      final res = await client.fetch(LmsQueries.attendanceList);
-      if (mounted) {
-        setState(() {
-          _records = res.result as List<dynamic>?;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _loading = false;
-        });
-      }
-    }
-  }
+  String _dateStr() => DateTime.now().toIso8601String().split('T').first;
+
+  String _statusFor(AttendanceRecord r) =>
+      _store.statusOverrides[r.studentId] ?? r.status;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    if (_loading) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Attendance')),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_error != null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Attendance')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
+    return Scaffold(
+      backgroundColor: LMSTheme.surfaceColor,
+      appBar: AppBar(
+        title: const Text('Attendance'),
+        backgroundColor: LMSTheme.surfaceColor,
+        foregroundColor: LMSTheme.onSurfaceColor,
+      ),
+      body: Observer(
+        builder: (_) {
+          if (_store.loading && _store.batches.isEmpty) {
+            return const Center(
+              child: CircularProgressIndicator(color: LMSTheme.primaryColor),
+            );
+          }
+          if (_store.error != null && _store.batches.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_store.error!, style: TextStyle(color: LMSTheme.errorColor)),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    onPressed: () => _store.loadBatches(),
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            );
+          }
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.error_outline_rounded, size: 48, color: theme.colorScheme.error),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: _loadAttendance,
-                  icon: const Icon(Icons.refresh_rounded),
-                  label: const Text('Retry'),
+                Text('Date: ${_dateStr()}', style: Theme.of(context).textTheme.titleSmall),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Batch', style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          value: _selectedBatchId,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          ),
+                          hint: const Text('Select batch'),
+                          items: _store.batches.map((b) {
+                            final id = b['_id'] as String? ?? '';
+                            final name = b['name'] as String? ?? id;
+                            final count = b['studentCount'];
+                            return DropdownMenuItem<String>(
+                              value: id,
+                              child: Text('$name${count != null ? ' ($count students)' : ''}'),
+                            );
+                          }).toList(),
+                          onChanged: (id) {
+                            setState(() {
+                              _selectedBatchId = id;
+                              _store.statusOverrides.clear();
+                              if (id != null) _store.loadBatchStudents(id);
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
+                if (_selectedBatchId != null) ...[
+                  const SizedBox(height: 16),
+                  Observer(
+                    builder: (_) {
+                      if (_store.loading && _store.records.isEmpty) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(color: LMSTheme.primaryColor),
+                          ),
+                        );
+                      }
+                      if (_store.records.isEmpty) {
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Center(
+                              child: Text(
+                                'No students in this batch',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ),
+                          ),
+                        );
+                      }
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Mark attendance',
+                                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                              ),
+                              FilledButton.icon(
+                                onPressed: _saveAll,
+                                icon: const Icon(Icons.save, size: 18),
+                                label: const Text('Save all'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          ..._store.records.map((r) => _buildRow(r)),
+                        ],
+                      );
+                    },
+                  ),
+                ],
               ],
             ),
-          ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRow(AttendanceRecord r) {
+    final status = _statusFor(r);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: LMSTheme.primaryColor.withValues(alpha: 0.2),
+              child: Text(
+                (r.studentName ?? r.studentId).isNotEmpty
+                    ? (r.studentName ?? r.studentId).substring(0, 1).toUpperCase()
+                    : '?',
+                style: const TextStyle(color: LMSTheme.primaryColor, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.studentName ?? 'Student', style: const TextStyle(fontWeight: FontWeight.w500)),
+                  if (r.studentId.isNotEmpty) Text(r.studentId, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                ],
+              ),
+            ),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'present', label: Text('Present'), icon: Icon(Icons.check_circle, size: 18)),
+                ButtonSegment(value: 'absent', label: Text('Absent'), icon: Icon(Icons.cancel, size: 18)),
+                ButtonSegment(value: 'late', label: Text('Late'), icon: Icon(Icons.schedule, size: 18)),
+              ],
+              selected: {status},
+              onSelectionChanged: (Set<String> sel) {
+                if (sel.isNotEmpty) _store.setStatus(r.studentId, sel.first);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveAll() async {
+    final date = _dateStr();
+    int saved = 0;
+    for (final r in _store.records) {
+      final status = _statusFor(r);
+      final ok = await _store.saveAttendance(r.studentId, date, status);
+      if (ok) saved++;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved $saved attendance record(s)'),
+          backgroundColor: LMSTheme.successColor,
         ),
       );
     }
-    final records = _records ?? [];
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Attendance'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            onPressed: _loadAttendance,
-            tooltip: 'Refresh',
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: _loadAttendance,
-        child: records.isEmpty
-            ? ListView(
-                children: [
-                  const SizedBox(height: 48),
-                  Icon(
-                    Icons.calendar_month_rounded,
-                    size: 64,
-                    color: theme.colorScheme.outline,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No attendance records',
-                    style: theme.textTheme.titleMedium,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Text(
-                      'Records are managed in Sanity Studio.',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: records.length,
-                itemBuilder: (context, index) {
-                  final r = records[index];
-                  final date = r['date'];
-                  final status = r['status'] ?? '—';
-                  final student = r['student'];
-                  final name = student != null ? student['name'] : '—';
-                  final statusColor = status == 'present'
-                      ? Colors.green
-                      : status == 'absent'
-                          ? Colors.red
-                          : Colors.orange;
-                  final statusIcon = status == 'present'
-                      ? Icons.check_circle_rounded
-                      : status == 'absent'
-                          ? Icons.cancel_rounded
-                          : Icons.schedule_rounded;
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      leading: CircleAvatar(
-                        backgroundColor: statusColor.withOpacity(0.15),
-                        child: Icon(statusIcon, color: statusColor, size: 26),
-                      ),
-                      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
-                      subtitle: Text(
-                        '$date · ${status.toUpperCase()}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      trailing: r['notes'] != null && (r['notes'] as String).isNotEmpty
-                          ? Icon(Icons.note_rounded, size: 20, color: theme.colorScheme.outline)
-                          : null,
-                    ),
-                  );
-                },
-              ),
-      ),
-    );
   }
 }

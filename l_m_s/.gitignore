@@ -1,3 +1,11 @@
+# Environment and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Vercel
+**/.vercel/
+
 **/node_modules
 *.log
 build
